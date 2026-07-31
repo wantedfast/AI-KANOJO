@@ -368,6 +368,7 @@ async function runSmokeCheck(reportPath) {
         orderCorrect: Boolean(features && slot && codex && (features.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING) && (slot.compareDocumentPosition(codex) & Node.DOCUMENT_POSITION_FOLLOWING)),
         avatarRect,
         codexRect,
+        longEdge: avatarRect ? Math.max(avatarRect.width, avatarRect.height) : null,
         overlapsCodex: Boolean(avatarRect && codexRect && avatarRect.x < codexRect.right && avatarRect.right > codexRect.x && avatarRect.y < codexRect.bottom && avatarRect.bottom > codexRect.y),
       };
     })()
@@ -382,32 +383,54 @@ async function runSmokeCheck(reportPath) {
   window.webContents.send("audio:stop");
   await new Promise((resolve) => setTimeout(resolve, 80));
   renderer.afterExternalStop = await window.webContents.executeJavaScript('document.querySelector(".state-listening") !== null', true);
+  renderer.resleepAvatar = await window.webContents.executeJavaScript(`
+    (async () => {
+      document.querySelector('.feature-companion')?.click();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      const image = document.querySelector('.runtime-avatar-slot img');
+      const rect = image?.getBoundingClientRect();
+      return {
+        idle: document.querySelector('.state-idle.is-awake') !== null,
+        src: image?.getAttribute('src') ?? null,
+        longEdge: rect ? Math.max(rect.width, rect.height) : null,
+      };
+    })()
+  `, true);
   window.webContents.send("window:locked-changed", true);
   await new Promise((resolve) => setTimeout(resolve, 50));
   renderer.lockedApplied = await window.webContents.executeJavaScript('document.querySelector(".drag-surface.is-locked") !== null', true);
   window.webContents.send("window:locked-changed", false);
-  renderer.utilityMenu = await window.webContents.executeJavaScript(`
-    (async () => {
-      document.querySelector('[aria-label="打开更多控制"]')?.click();
-      await new Promise((resolve) => setTimeout(resolve, 80));
-      const menu = document.querySelector('.utility-menu');
-      const rect = menu?.getBoundingClientRect();
+  renderer.windowControls = await window.webContents.executeJavaScript(`
+    (() => {
+      const controls = document.querySelector('.window-traffic-lights');
+      const close = document.querySelector('.traffic-light-close');
+      const minimize = document.querySelector('.traffic-light-minimize');
+      const rect = controls?.getBoundingClientRect();
+      const color = (selector) => getComputedStyle(document.querySelector(selector + ' span')).backgroundColor;
       return {
-        visible: Boolean(menu),
-        itemCount: menu?.querySelectorAll('button').length ?? 0,
+        visible: Boolean(controls),
+        itemCount: controls?.querySelectorAll('button').length ?? 0,
+        closeColor: close ? color('.traffic-light-close') : null,
+        minimizeColor: minimize ? color('.traffic-light-minimize') : null,
+        closeCursor: close ? getComputedStyle(close).cursor : null,
+        minimizeCursor: minimize ? getComputedStyle(minimize).cursor : null,
+        closeTooltip: close?.dataset.tooltip ?? null,
+        minimizeTooltip: minimize?.dataset.tooltip ?? null,
+        closeTitle: close?.title ?? null,
+        minimizeTitle: minimize?.title ?? null,
         rect: rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null,
       };
     })()
   `, true);
-  if (renderer.utilityMenu.rect) {
-    const menuCenter = {
-      x: renderer.utilityMenu.rect.x + renderer.utilityMenu.rect.width / 2,
-      y: renderer.utilityMenu.rect.y + renderer.utilityMenu.rect.height / 2,
+  if (renderer.windowControls.rect) {
+    const controlsCenter = {
+      x: renderer.windowControls.rect.x + renderer.windowControls.rect.width / 2,
+      y: renderer.windowControls.rect.y + renderer.windowControls.rect.height / 2,
     };
-    renderer.utilityMenu.hitTracked = false;
+    renderer.windowControls.hitTracked = false;
     for (let attempt = 0; attempt < 10; attempt += 1) {
-      renderer.utilityMenu.hitTracked = hitRegions.some((region) => pointInside(menuCenter, region));
-      if (renderer.utilityMenu.hitTracked) break;
+      renderer.windowControls.hitTracked = hitRegions.some((region) => pointInside(controlsCenter, region));
+      if (renderer.windowControls.hitTracked) break;
       await new Promise((resolve) => setTimeout(resolve, 30));
     }
   }

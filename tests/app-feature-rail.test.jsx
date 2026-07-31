@@ -8,7 +8,7 @@ afterEach(() => {
 });
 
 describe("flat spectrum feature rail", () => {
-  it("renders three primary features, Codex, and a two-action utility menu", async () => {
+  it("renders three primary features, Codex, and Apple-style window controls", async () => {
     const { container } = render(<App />);
     await act(async () => Promise.resolve());
 
@@ -18,29 +18,17 @@ describe("flat spectrum feature rail", () => {
     expect(container.querySelector(".runtime-avatar-slot")).toBeNull();
     expect(screen.getByLabelText("Codex Standby")).toHaveTextContent("CodexReady");
 
-    const trigger = container.querySelector(".utility-menu-trigger");
-    fireEvent.click(trigger);
-    const menu = screen.getByRole("menu", { name: "更多控制" });
-    expect(menu.querySelectorAll("button")).toHaveLength(2);
-    expect(screen.getByRole("menuitem", { name: "缩小悬浮窗" })).toBeEnabled();
-    expect(screen.getByRole("menuitem", { name: "退出程序" })).toBeEnabled();
-    expect(screen.queryByRole("menuitem", { name: "开启字幕" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "暂停聆听" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "结束对话" })).not.toBeInTheDocument();
-  });
-
-  it("closes the utility menu with Escape and outside interaction", async () => {
-    const { container } = render(<App />);
-    await act(async () => Promise.resolve());
-    const trigger = container.querySelector(".utility-menu-trigger");
-
-    fireEvent.click(trigger);
-    fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.queryByRole("menu", { name: "更多控制" })).not.toBeInTheDocument();
-
-    fireEvent.click(trigger);
-    fireEvent.pointerDown(document.body);
-    expect(screen.queryByRole("menu", { name: "更多控制" })).not.toBeInTheDocument();
+    const controls = screen.getByLabelText("窗口控制");
+    expect(controls.querySelectorAll("button")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "关闭程序" })).toHaveClass("traffic-light-close");
+    expect(screen.getByRole("button", { name: "关闭程序" })).toHaveAttribute("data-tooltip", "关闭程序");
+    expect(screen.getByRole("button", { name: "关闭程序" })).toHaveAttribute("title", "关闭程序");
+    expect(screen.getByRole("button", { name: "关闭程序" })).toHaveAttribute("data-no-window-drag");
+    expect(screen.getByRole("button", { name: "缩小悬浮窗" })).toHaveClass("traffic-light-minimize");
+    expect(screen.getByRole("button", { name: "缩小悬浮窗" })).toHaveAttribute("data-tooltip", "缩小悬浮窗");
+    expect(screen.getByRole("button", { name: "缩小悬浮窗" })).toHaveAttribute("title", "缩小悬浮窗");
+    expect(screen.getByRole("button", { name: "缩小悬浮窗" })).toHaveAttribute("data-no-window-drag");
+    expect(container.querySelector(".utility-menu-trigger")).not.toBeInTheDocument();
   });
 
   it("keeps singing and wardrobe as honest near-term entries", async () => {
@@ -57,11 +45,10 @@ describe("flat spectrum feature rail", () => {
     const { container } = render(<App />);
     await act(async () => Promise.resolve());
 
-    fireEvent.click(container.querySelector(".utility-menu-trigger"));
-    fireEvent.click(screen.getByRole("menuitem", { name: "缩小悬浮窗" }));
+    fireEvent.click(screen.getByRole("button", { name: "缩小悬浮窗" }));
     expect(screen.getByLabelText("已缩小悬浮窗")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "展开悬浮窗" }));
-    expect(container.querySelector(".utility-menu-trigger")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "缩小悬浮窗" })).toBeInTheDocument();
   });
 
   it("moves the active 8-bit avatar between the feature icons and Codex", async () => {
@@ -77,6 +64,7 @@ describe("flat spectrum feature rail", () => {
     expect(container.querySelector(".desktop-stage")).toHaveClass("state-listening", "is-awake");
     expect(slot).toBeInTheDocument();
     expect(slot.querySelector(".runtime-avatar-button img")).toHaveAttribute("src", expect.stringContaining("listening.png"));
+    expect(slot.querySelector(".runtime-avatar-button")).toHaveStyle({ "--seat-bottom": "-72px" });
     expect(features.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(slot.compareDocumentPosition(codex) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });

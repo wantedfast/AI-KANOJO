@@ -230,9 +230,9 @@ button, input, select { font: inherit; }
 .runtime-avatar-slot {
   position: relative;
   z-index: 6;
-  flex: 0 0 62px;
+  flex: 0 0 86px;
   align-self: stretch;
-  min-width: 62px;
+  min-width: 86px;
   pointer-events: none;
 }
 
@@ -298,49 +298,61 @@ button, input, select { font: inherit; }
 .round-button:hover:not(:disabled), .round-button:focus-visible { background: rgba(255, 255, 255, .1); outline: none; transform: scale(1.04); }
 .round-button:disabled { cursor: default; opacity: .72; }
 .round-button.is-selected { background: rgba(10, 132, 255, .28); }
-.round-button.end-button svg { color: rgba(176, 197, 229, .8); }
-.round-button.minimize-button svg { color: rgba(168, 204, 255, .84); }
-
-.utility-menu-trigger { width: 36px; height: 36px; }
-.utility-menu-trigger svg { width: 24px; height: 24px; }
-.utility-menu {
-  position: absolute;
-  right: -4px;
-  bottom: calc(100% + 14px);
-  z-index: 36;
-  width: 48px;
-  display: grid;
-  justify-items: center;
-  gap: 3px;
-  padding: 6px;
-  border: 1px solid rgba(130, 185, 235, .42);
-  border-radius: 20px;
-  background: linear-gradient(180deg, rgba(21, 39, 61, .98), rgba(10, 27, 44, .99));
-  box-shadow: -2px 0 10px rgba(149, 104, 255, .12), 2px 0 10px rgba(82, 210, 255, .14), inset 0 1px rgba(255,255,255,.1);
-  -webkit-app-region: no-drag;
-  animation: utility-menu-enter .16s ease-out both;
+.window-traffic-lights {
+  flex-direction: column;
+  gap: 0;
 }
-.utility-menu-button { position: relative; width: 36px; height: 36px; border-radius: 12px; }
-.utility-menu-button svg { width: 23px; height: 23px; }
-.utility-menu-tooltip {
+.traffic-light {
+  position: relative;
+  width: 44px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+.drag-surface .traffic-light,
+.drag-surface .traffic-light * { cursor: pointer; }
+.traffic-light::after {
   position: absolute;
   top: 50%;
   right: calc(100% + 8px);
+  z-index: 40;
   padding: 5px 8px;
-  border: 1px solid rgba(132, 180, 229, .24);
+  border: 1px solid rgba(255,255,255,.12);
   border-radius: 8px;
-  background: rgba(9, 24, 40, .97);
-  color: rgba(229, 238, 250, .9);
+  background: rgba(19, 25, 36, .94);
+  box-shadow: 0 6px 18px rgba(0,0,0,.22);
+  color: rgba(245,247,250,.92);
+  content: attr(data-tooltip);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
   font-size: 10px;
+  font-weight: 450;
   line-height: 1;
   white-space: nowrap;
   opacity: 0;
   pointer-events: none;
-  transform: translate(4px, -50%);
-  transition: opacity .16s ease, transform .16s ease;
+  transform: translate(4px, -50%) scale(.98);
+  transition: opacity .18s cubic-bezier(.25,.1,.25,1), transform .18s cubic-bezier(.25,.1,.25,1);
 }
-.utility-menu-button:hover .utility-menu-tooltip,
-.utility-menu-button:focus-visible .utility-menu-tooltip { opacity: 1; transform: translate(0, -50%); }
+.traffic-light:hover::after,
+.traffic-light:focus-visible::after { opacity: 1; transform: translate(0, -50%) scale(1); }
+.traffic-light span {
+  width: 13px;
+  height: 13px;
+  border: 1px solid rgba(0, 0, 0, .18);
+  border-radius: 50%;
+  transition: filter .2s cubic-bezier(.25, .1, .25, 1), transform .2s cubic-bezier(.25, .1, .25, 1);
+}
+.traffic-light-close span { background: #ff5f57; box-shadow: inset 0 1px rgba(255,255,255,.24), 0 0 8px rgba(255,95,87,.18); }
+.traffic-light-minimize span { background: #28c840; box-shadow: inset 0 1px rgba(255,255,255,.24), 0 0 8px rgba(40,200,64,.16); }
+.traffic-light:hover span,
+.traffic-light:focus-visible span { filter: brightness(1.12); transform: scale(1.08); }
+.traffic-light:focus-visible { border-radius: 12px; outline: 2px solid rgba(255,255,255,.32); outline-offset: -5px; }
+.traffic-light:active span { filter: brightness(.88); transform: scale(.94); }
 
 .is-minimized .status-rail {
   width: 112px;
@@ -394,14 +406,14 @@ button, input, select { font: inherit; }
 .runtime-avatar-slot .runtime-avatar-button {
   left: 50%;
   bottom: 100%;
-  width: 74px;
-  height: 92px;
+  width: 86px;
+  height: 170px;
   pointer-events: auto;
   transform: translateX(-50%);
 }
 .runtime-avatar-slot .runtime-avatar-button img {
-  max-width: 86px;
-  max-height: 86px;
+  max-width: 160px;
+  max-height: 160px;
 }
 .runtime-avatar-slot .runtime-avatar-button .avatar-halo { width: 58px; }
 .is-asleep .avatar-button { left: 50%; width: 190px; height: 80px; }
@@ -524,7 +536,6 @@ button, input, select { font: inherit; }
 @keyframes speech-bob { 0%,100% { transform: translateX(-50%) rotate(-.5deg); } 50% { transform: translateX(-50%) translateY(-3px) rotate(.5deg); } }
 @keyframes happy-bounce { 0%,100% { transform: translateX(-50%) translateY(0); } 45% { transform: translateX(-50%) translateY(-7px); } }
 @keyframes error-shake { 0%,100% { transform: translateX(-50%); } 35% { transform: translateX(calc(-50% - 3px)); } 65% { transform: translateX(calc(-50% + 3px)); } }
-@keyframes utility-menu-enter { from { opacity: 0; transform: translateY(5px) scale(.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes codex-level { from { height: 5px; opacity: .46; } to { height: 16px; opacity: 1; } }
 @keyframes rail-flow-top { 0% { transform: translateX(0); opacity: .14; } 42% { opacity: .68; } 100% { transform: translateX(230%); opacity: .18; } }
@@ -552,7 +563,7 @@ button, input, select { font: inherit; }
   .rail-mainline { gap: 4px; padding-inline: 9px; }
   .icon-feature-group { gap: 4px; }
   .icon-feature-button { width: 36px; height: 36px; }
-  .runtime-avatar-slot { flex-basis: 56px; min-width: 56px; }
+  .runtime-avatar-slot { flex-basis: 78px; min-width: 78px; }
   .codex-status { flex-basis: 172px; gap: 6px; padding-inline: 8px; }
   .portrait-button { left: -14px; bottom: 82px; width: 225px; height: 390px; }
   .portrait-button img { bottom: -125px; width: 225px; }

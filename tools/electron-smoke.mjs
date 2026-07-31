@@ -65,13 +65,25 @@ if (
   || !report.renderer.afterListening
   || !report.renderer.beforeExternalStop
   || !report.renderer.afterExternalStop
+  || !report.renderer.resleepAvatar?.idle
+  || !report.renderer.resleepAvatar.src?.endsWith("idle.png")
+  || Math.abs(report.renderer.resleepAvatar.longEdge - 160) > 1
   || !report.renderer.lockedApplied
   || !report.renderer.runtimeAvatar?.slotPresent
   || !report.renderer.runtimeAvatar.orderCorrect
+  || Math.abs(report.renderer.runtimeAvatar.longEdge - 160) > 1
   || report.renderer.runtimeAvatar.overlapsCodex
-  || !report.renderer.utilityMenu?.visible
-  || report.renderer.utilityMenu.itemCount !== 2
-  || !report.renderer.utilityMenu.hitTracked
+  || !report.renderer.windowControls?.visible
+  || report.renderer.windowControls.itemCount !== 2
+  || report.renderer.windowControls.closeColor !== "rgb(255, 95, 87)"
+  || report.renderer.windowControls.minimizeColor !== "rgb(40, 200, 64)"
+  || report.renderer.windowControls.closeCursor !== "pointer"
+  || report.renderer.windowControls.minimizeCursor !== "pointer"
+  || report.renderer.windowControls.closeTooltip !== "关闭程序"
+  || report.renderer.windowControls.minimizeTooltip !== "缩小悬浮窗"
+  || report.renderer.windowControls.closeTitle !== "关闭程序"
+  || report.renderer.windowControls.minimizeTitle !== "缩小悬浮窗"
+  || !report.renderer.windowControls.hitTracked
   || !report.renderer.minimizeToggle?.restoreVisible
   || report.renderer.minimizeToggle.compactWidth > 130
   || report.renderer.minimizeToggle.compactHeight > 50

@@ -63,3 +63,9 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 - Transparent-area click-through must be controlled from the Electron main process using globally tracked cursor position and renderer-published hit regions; do not depend on renderer `mousemove` to recover after `setIgnoreMouseEvents(true)`.
 - The companion, portrait, capsule, pixel mascot, and Codex pill move as one unit. Smart-collapse the UI in fullscreen contexts.
 - `docs/PRD.md` version 1.1 is the visual and product source of truth for the next implementation pass.
+## Highest-priority visual override (v1.7)
+
+- Replace the right-side ellipsis/menu with two always-visible macOS-style traffic lights: red closes the app, green minimizes the companion.
+- Stack the traffic lights vertically (red close above green minimize), using a 44×42px hit target while keeping the visible dot at 13px. Both controls must expose pointer cursor, non-drag hit behavior, and a concise hover tooltip.
+- Render every 8-bit state at the same 160px long-edge scale, including initial sleep and idle-after-wake. State changes may alter pose and seat anchor, never scale.
+- Keep the active 8-bit avatar between the feature icons and Codex without overlap.

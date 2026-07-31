@@ -38,7 +38,7 @@
         "height": 64.73958587646484
       }
     },
-    "hitRegionCount": 16,
+    "hitRegionCount": 17,
     "dragRegionTracked": true,
     "manualDragApi": true,
     "dragReady": true,
@@ -79,44 +79,58 @@
       "naturalWidth": 438,
       "src": "file:///C:/Users/wangf/Documents/AI-KANOJO/dist/client/avatar/outfits/front/02-modern-jk.png",
       "rect": {
-        "x": 3.9508416652679443,
-        "y": 74.67314147949219,
+        "x": 3.9195261001586914,
+        "y": 74.69054412841797,
         "width": 270,
-        "height": 613.354248046875
+        "height": 613.3541259765625
       }
     },
     "runtimeAvatar": {
       "slotPresent": true,
       "orderCorrect": true,
       "avatarRect": {
-        "x": 406.0052185058594,
-        "y": 455.71673583984375,
-        "width": 43.32291793823242,
-        "height": 86,
-        "right": 449.3281364440918,
-        "bottom": 541.7167358398438
+        "x": 399.359375,
+        "y": 415.1371765136719,
+        "width": 80.61458587646484,
+        "height": 160.0000457763672,
+        "right": 479.97396087646484,
+        "bottom": 575.1372222900391
       },
       "codexRect": {
-        "x": 533.3333740234375,
+        "x": 525.3333740234375,
         "y": 524,
         "width": 190,
         "height": 48,
-        "right": 723.3333740234375,
+        "right": 715.3333740234375,
         "bottom": 572
       },
+      "longEdge": 160.0000457763672,
       "overlapsCodex": false
     },
     "beforeExternalStop": true,
     "afterExternalStop": true,
+    "resleepAvatar": {
+      "idle": true,
+      "src": "./avatar/8bit/states/idle.png",
+      "longEdge": 159.99398803710938
+    },
     "lockedApplied": true,
-    "utilityMenu": {
+    "windowControls": {
       "visible": true,
       "itemCount": 2,
+      "closeColor": "rgb(255, 95, 87)",
+      "minimizeColor": "rgb(40, 200, 64)",
+      "closeCursor": "pointer",
+      "minimizeCursor": "pointer",
+      "closeTooltip": "关闭程序",
+      "minimizeTooltip": "缩小悬浮窗",
+      "closeTitle": "关闭程序",
+      "minimizeTitle": "缩小悬浮窗",
       "rect": {
-        "x": 721.7264404296875,
-        "y": 430.43707275390625,
-        "width": 47.2138671875,
-        "height": 86.88671875
+        "x": 721.3333740234375,
+        "y": 506,
+        "width": 44,
+        "height": 84
       },
       "hitTracked": true
     },

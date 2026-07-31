@@ -1,14 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  DotsThreeVertical,
   Lock,
   LockOpen,
-  Minus,
   Microphone,
   MusicNotes,
   TShirt,
   ArrowsOutSimple,
-  X,
 } from "@phosphor-icons/react";
 import { createCompanionController, STATE_META } from "./companion-controller.js";
 import { RealtimeScribe } from "./realtime-scribe.js";
@@ -84,7 +81,6 @@ export function App() {
   const [scribeStatus, setScribeStatus] = useState("idle");
   const [locked, setLocked] = useState(false);
   const [minimized, setMinimized] = useState(false);
-  const [utilityMenuOpen, setUtilityMenuOpen] = useState(false);
   const [keys, setKeys] = useState({ deepseek: "", elevenlabs: "" });
   const [saveNote, setSaveNote] = useState("");
   const [featureNotice, setFeatureNotice] = useState("");
@@ -93,25 +89,8 @@ export function App() {
   const audioRef = useRef(null);
   const featureNoticeTimer = useRef(null);
   const dragPointer = useRef(null);
-  const utilityMenuRef = useRef(null);
 
   useEffect(() => controller.subscribe(setSnapshot), [controller]);
-
-  useEffect(() => {
-    if (!utilityMenuOpen) return undefined;
-    const dismissOnPointer = (event) => {
-      if (!utilityMenuRef.current?.contains(event.target)) setUtilityMenuOpen(false);
-    };
-    const dismissOnEscape = (event) => {
-      if (event.key === "Escape") setUtilityMenuOpen(false);
-    };
-    window.addEventListener("pointerdown", dismissOnPointer);
-    window.addEventListener("keydown", dismissOnEscape);
-    return () => {
-      window.removeEventListener("pointerdown", dismissOnPointer);
-      window.removeEventListener("keydown", dismissOnEscape);
-    };
-  }, [utilityMenuOpen]);
 
   const refreshMicrophones = async () => {
     if (!navigator.mediaDevices?.enumerateDevices) {
@@ -295,7 +274,6 @@ export function App() {
     controller.endSession();
     setPaused(false);
     setActiveSession(false);
-    setUtilityMenuOpen(false);
   };
 
   useEffect(() => api.onAudioStop?.(() => {
@@ -359,10 +337,6 @@ export function App() {
 
   const handleSingRequest = () => showFeatureNotice("唱歌功能准备中");
   const handleWardrobeRequest = () => showFeatureNotice("换装功能准备中");
-  const runUtilityAction = (action) => {
-    action();
-    setUtilityMenuOpen(false);
-  };
 
   const meta = STATE_META[snapshot.state];
   const codexWorking = activeSession && ["thinking", "speaking"].includes(snapshot.state);
@@ -439,7 +413,7 @@ export function App() {
               <div className="runtime-avatar-slot" aria-label={`${meta.label} 8-bit 工作状态`}>
                 <button
                   className={`avatar-button runtime-avatar-button animation-${meta.animation}`}
-                  style={{ "--seat-anchor-y": meta.seatAnchor, "--seat-bottom": `${(meta.seatAnchor - 1) * 86}px` }}
+                  style={{ "--seat-anchor-y": meta.seatAnchor, "--seat-bottom": `${(meta.seatAnchor - 1) * 160}px` }}
                   type="button"
                   onClick={toggleListening}
                   aria-label={`${meta.label}角色，点击切换聆听`}
@@ -453,30 +427,13 @@ export function App() {
             <span className="rail-main-spacer" />
             <CodexStatus working={codexWorking} />
 
-            <div className="rail-actions" aria-label="会话控制" ref={utilityMenuRef}>
-              <button
-                type="button"
-                className={`round-button utility-menu-trigger ${utilityMenuOpen ? "is-selected" : ""}`}
-                onClick={() => setUtilityMenuOpen((value) => !value)}
-                aria-label={utilityMenuOpen ? "关闭更多控制" : "打开更多控制"}
-                aria-haspopup="menu"
-                aria-expanded={utilityMenuOpen}
-                aria-controls="utility-menu"
-              >
-                <DotsThreeVertical weight="bold" />
+            <div className="rail-actions window-traffic-lights" aria-label="窗口控制">
+              <button type="button" className="traffic-light traffic-light-close" data-no-window-drag data-tooltip="关闭程序" title="关闭程序" onClick={() => api.quitApp?.()} aria-label="关闭程序">
+                <span aria-hidden="true" />
               </button>
-              {utilityMenuOpen && (
-                <div className="utility-menu" id="utility-menu" role="menu" aria-label="更多控制">
-                  <button type="button" role="menuitem" className="round-button utility-menu-button minimize-button" onClick={() => runUtilityAction(() => { setPanel("compact"); setMinimized(true); })} aria-label="缩小悬浮窗">
-                    <Minus weight="light" />
-                    <span className="utility-menu-tooltip" aria-hidden="true">缩小</span>
-                  </button>
-                  <button type="button" role="menuitem" className="round-button utility-menu-button end-button" onClick={() => runUtilityAction(() => api.quitApp?.())} aria-label="退出程序">
-                    <X weight="light" />
-                    <span className="utility-menu-tooltip" aria-hidden="true">退出</span>
-                  </button>
-                </div>
-              )}
+              <button type="button" className="traffic-light traffic-light-minimize" data-no-window-drag data-tooltip="缩小悬浮窗" title="缩小悬浮窗" onClick={() => { setPanel("compact"); setMinimized(true); }} aria-label="缩小悬浮窗">
+                <span aria-hidden="true" />
+              </button>
             </div>
           </div>
 

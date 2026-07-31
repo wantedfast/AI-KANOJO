@@ -1,4 +1,20 @@
-# AI-KANOJO v1.6 扁平胶囊 Design QA
+# AI-KANOJO v1.7 苹果交通灯与等尺度 8-bit Design QA
+
+## v1.7 验收结果
+
+- 右侧窗口控制已从三点菜单改为两个常驻交通灯：关闭为 `rgb(255, 95, 87)`，缩小为 `rgb(40, 200, 64)`。
+- 两个圆点竖向排列，红色在上、绿色在下；视觉直径为 13px，各自拥有 44×42px 点击区域。按钮使用 pointer 光标、明确的非拖动命中区，并在悬停时显示功能提示。
+- Electron 实测两个按钮的计算光标均为 `pointer`，`data-tooltip` 与原生 `title` 均分别为“关闭程序”和“缩小悬浮窗”；命中区已进入透明窗口的交互区域。
+- Apple 审美审查：控件满足清晰、克制、渐进提示和系统字体原则。红/绿语义及竖排方式是用户指定的产品变体，与标准 macOS 红/黄/绿横排存在刻意差异，不作为缺陷。
+- 初始休眠角色实测长边为 160px；Listening 角色长边为 160px；唤醒后再次休眠的角色长边为 159.99px，视觉尺度误差小于 0.01px。
+- Listening 角色为 80.61×160px，继续位于三个功能图标和 Codex 之间；与 Codex 几何相交为 `false`。
+- Electron 截图证据：`design-qa/electron-awake.png`、`design-qa/electron-menu.png`；结构数据：`design-qa/electron-smoke.json`。
+- `npm run verify` 通过：13 项组件/服务/资产测试、Electron 拖动与重启恢复、4 项 Sites 测试均无失败。
+- 当前无未解决 P0、P1 或 P2 问题。
+
+---
+
+## v1.6 历史验收
 
 ## 验收基准
 
