@@ -66,6 +66,7 @@ if (
   || !report.renderer.beforeExternalStop
   || !report.renderer.afterExternalStop
   || !report.renderer.resleepAvatar?.idle
+  || !report.renderer.resleepAvatar.portraitHidden
   || !report.renderer.resleepAvatar.src?.endsWith("idle.png")
   || Math.abs(report.renderer.resleepAvatar.longEdge - 160) > 1
   || !report.renderer.lockedApplied
@@ -73,10 +74,15 @@ if (
   || !report.renderer.runtimeAvatar.orderCorrect
   || Math.abs(report.renderer.runtimeAvatar.longEdge - 160) > 1
   || report.renderer.runtimeAvatar.overlapsCodex
+  || report.renderer.portrait?.rect?.width > 230
+  || report.renderer.portrait?.rect?.x + report.renderer.portrait?.rect?.width < report.window.visualBounds.rail.x
   || !report.renderer.windowControls?.visible
   || report.renderer.windowControls.itemCount !== 2
   || report.renderer.windowControls.closeColor !== "rgb(255, 95, 87)"
-  || report.renderer.windowControls.minimizeColor !== "rgb(40, 200, 64)"
+  || report.renderer.windowControls.minimizeColor !== "rgb(254, 188, 46)"
+  || !report.renderer.windowControls.vertical
+  || report.renderer.windowControls.visibleGap < 6
+  || report.renderer.windowControls.visibleGap > 12
   || report.renderer.windowControls.closeCursor !== "pointer"
   || report.renderer.windowControls.minimizeCursor !== "pointer"
   || report.renderer.windowControls.closeTooltip !== "关闭程序"
@@ -85,9 +91,9 @@ if (
   || report.renderer.windowControls.minimizeTitle !== "缩小悬浮窗"
   || !report.renderer.windowControls.hitTracked
   || !report.renderer.minimizeToggle?.restoreVisible
-  || report.renderer.minimizeToggle.compactWidth > 130
+  || Math.abs(report.renderer.minimizeToggle.compactWidth - 160) > 1
   || report.renderer.minimizeToggle.compactHeight > 50
-  || report.renderer.minimizeToggle.expandedWidth < 500
+  || Math.abs(report.renderer.minimizeToggle.expandedWidth - 500) > 1
   || !report.renderer.settingsVisible
 ) {
   throw new Error(`Renderer smoke assertions failed: ${JSON.stringify(report.renderer)}`);

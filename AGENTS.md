@@ -69,3 +69,13 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 - Stack the traffic lights vertically (red close above green minimize), using a 44×42px hit target while keeping the visible dot at 13px. Both controls must expose pointer cursor, non-drag hit behavior, and a concise hover tooltip.
 - Render every 8-bit state at the same 160px long-edge scale, including initial sleep and idle-after-wake. State changes may alter pose and seat anchor, never scale.
 - Keep the active 8-bit avatar between the feature icons and Codex without overlap.
+## Highest-priority visual override (v1.8 local candidate)
+
+- Attach the awakened 2D portrait to the capsule's left edge with a restrained overlap; target roughly 220px width instead of a detached 270px portrait at the screen edge.
+- Keep every 8-bit state at a 160px long edge and preserve the icon → avatar → Codex DOM order.
+- Use `Working` as the compact Codex active label. Keep the meter, but reduce nested borders, shadows, and glow.
+- Use neutral graphite-blue glass with low-intensity violet/cyan brand edges. Avoid a game-HUD level of neon.
+- Use a 160×44px minimized rail so the fixed-scale 160px character and compact control share one visual width.
+- Keep the expanded rail at 500×88px and offset the Codex status 4px left; this is the compact limit that still preserves the active 8-bit slot without overlap.
+- Hide the 2D Modern JK portrait in every `idle`/sleep state, including idle reached after an active conversation; sleep shows only the 8-bit character.
+- Keep the window controls as a compact vertical pair at the rail's far-right edge: 12px red close above a yellow minimize dot, 8px visible spacing, 32×20px pointer hit areas, non-drag behavior, and hover labels/glyphs.

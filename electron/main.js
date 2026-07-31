@@ -391,6 +391,7 @@ async function runSmokeCheck(reportPath) {
       const rect = image?.getBoundingClientRect();
       return {
         idle: document.querySelector('.state-idle.is-awake') !== null,
+        portraitHidden: document.querySelector('.portrait-button') === null,
         src: image?.getAttribute('src') ?? null,
         longEdge: rect ? Math.max(rect.width, rect.height) : null,
       };
@@ -406,6 +407,8 @@ async function runSmokeCheck(reportPath) {
       const close = document.querySelector('.traffic-light-close');
       const minimize = document.querySelector('.traffic-light-minimize');
       const rect = controls?.getBoundingClientRect();
+      const closeDot = close?.querySelector('span')?.getBoundingClientRect();
+      const minimizeDot = minimize?.querySelector('span')?.getBoundingClientRect();
       const color = (selector) => getComputedStyle(document.querySelector(selector + ' span')).backgroundColor;
       return {
         visible: Boolean(controls),
@@ -418,6 +421,8 @@ async function runSmokeCheck(reportPath) {
         minimizeTooltip: minimize?.dataset.tooltip ?? null,
         closeTitle: close?.title ?? null,
         minimizeTitle: minimize?.title ?? null,
+        vertical: Boolean(closeDot && minimizeDot && Math.abs(closeDot.x - minimizeDot.x) < 1),
+        visibleGap: closeDot && minimizeDot ? minimizeDot.y - closeDot.bottom : null,
         rect: rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null,
       };
     })()

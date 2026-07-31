@@ -78,6 +78,20 @@ describe("flat spectrum feature rail", () => {
     await act(async () => vi.advanceTimersByTimeAsync(1600));
     expect(container.querySelector(".desktop-stage")).toHaveClass("state-thinking");
     expect(container.querySelector(".runtime-avatar-slot img")).toHaveAttribute("src", expect.stringContaining("thinking.png"));
-    expect(screen.getByLabelText("Codex Working")).toHaveTextContent("Generating…");
+    expect(screen.getByLabelText("Codex Working")).toHaveTextContent("Working");
+  });
+
+  it("hides the 2D portrait whenever the companion returns to sleep", async () => {
+    vi.useFakeTimers();
+    const { container } = render(<App />);
+    await act(async () => Promise.resolve());
+
+    expect(container.querySelector(".portrait-button")).not.toBeInTheDocument();
+    fireEvent.click(container.querySelector(".feature-companion"));
+    expect(container.querySelector(".portrait-button")).toBeInTheDocument();
+
+    await act(async () => vi.advanceTimersByTimeAsync(8000));
+    expect(container.querySelector(".desktop-stage")).toHaveClass("state-idle");
+    expect(container.querySelector(".portrait-button")).not.toBeInTheDocument();
   });
 });

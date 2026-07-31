@@ -60,7 +60,7 @@ function CodexStatus({ working }) {
   return (
     <div className={`codex-status ${working ? "is-working" : "is-standby"}`} aria-label={working ? "Codex Working" : "Codex Standby"}>
       <span className="codex-identity"><i /><strong>Codex</strong></span>
-      <span className="codex-mode">{working ? "Generating…" : "Ready"}</span>
+      <span className="codex-mode">{working ? "Working" : "Ready"}</span>
       <span className="codex-meter" aria-hidden="true">
         {Array.from({ length: 5 }, (_, index) => <i key={index} />)}
       </span>
@@ -340,10 +340,11 @@ export function App() {
 
   const meta = STATE_META[snapshot.state];
   const codexWorking = activeSession && ["thinking", "speaking"].includes(snapshot.state);
+  const showPortrait = activeSession && snapshot.state !== "idle" && !minimized;
   return (
     <main className={`desktop-stage state-${snapshot.state} ${activeSession ? "is-awake" : "is-asleep"} ${minimized ? "is-minimized" : ""} ${panel === "settings" ? "has-settings" : ""} ${api.isDesktop ? "is-desktop-runtime" : "is-browser-preview"}`}>
       <section className="companion-shell" aria-label="AI-KANOJO 桌面女友">
-        {activeSession && !minimized && (
+        {showPortrait && (
           <button
             className="portrait-button"
             type="button"
