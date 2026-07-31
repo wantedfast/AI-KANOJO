@@ -3,9 +3,9 @@
     "alwaysOnTop": true,
     "dragHandle": {
       "x": 316,
-      "y": 502,
+      "y": 522,
       "width": 520,
-      "height": 108,
+      "height": 88,
       "hitClass": "rail-mainline",
       "hitWithinDrag": true,
       "appRegion": "no-drag",
@@ -14,26 +14,26 @@
     "visualBounds": {
       "rail": {
         "x": 260,
-        "y": 484,
+        "y": 504,
         "width": 520,
-        "height": 108
+        "height": 88
       },
       "topLine": null,
       "mainLine": {
         "x": 260.66668701171875,
-        "y": 484.66668701171875,
+        "y": 504.66668701171875,
         "width": 518.6666870117188,
-        "height": 106.66667175292969
+        "height": 86.66667175292969
       },
       "avatarButton": {
         "x": 425,
-        "y": 404,
+        "y": 424,
         "width": 190,
         "height": 80
       },
       "avatarImage": {
         "x": 440,
-        "y": 419.26043701171875,
+        "y": 439.26043701171875,
         "width": 160,
         "height": 64.73958587646484
       }
@@ -79,23 +79,44 @@
       "naturalWidth": 438,
       "src": "file:///C:/Users/wangf/Documents/AI-KANOJO/dist/client/avatar/outfits/front/02-modern-jk.png",
       "rect": {
-        "x": 3.8782548904418945,
-        "y": 54.713470458984375,
+        "x": 3.9508416652679443,
+        "y": 74.67314147949219,
         "width": 270,
-        "height": 613.3541870117188
+        "height": 613.354248046875
       }
+    },
+    "runtimeAvatar": {
+      "slotPresent": true,
+      "orderCorrect": true,
+      "avatarRect": {
+        "x": 406.0052185058594,
+        "y": 455.71673583984375,
+        "width": 43.32291793823242,
+        "height": 86,
+        "right": 449.3281364440918,
+        "bottom": 541.7167358398438
+      },
+      "codexRect": {
+        "x": 533.3333740234375,
+        "y": 524,
+        "width": 190,
+        "height": 48,
+        "right": 723.3333740234375,
+        "bottom": 572
+      },
+      "overlapsCodex": false
     },
     "beforeExternalStop": true,
     "afterExternalStop": true,
     "lockedApplied": true,
     "utilityMenu": {
       "visible": true,
-      "itemCount": 4,
+      "itemCount": 2,
       "rect": {
-        "x": 713.7252197265625,
-        "y": 338.0900573730469,
-        "width": 47.21630859375,
-        "height": 166.5684814453125
+        "x": 721.7264404296875,
+        "y": 430.43707275390625,
+        "width": 47.2138671875,
+        "height": 86.88671875
       },
       "hitTracked": true
     },

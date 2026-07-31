@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld("kanojo", {
   startWindowDrag: (point) => ipcRenderer.send("window:drag-start", point),
   moveWindowDrag: (point) => ipcRenderer.send("window:drag-move", point),
   endWindowDrag: () => ipcRenderer.send("window:drag-end"),
+  quitApp: () => ipcRenderer.send("app:quit"),
   onAudioStop: (callback) => {
     const listener = () => callback();
     ipcRenderer.on("audio:stop", listener);

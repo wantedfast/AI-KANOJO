@@ -1,5 +1,14 @@
 # Prototype Instructions
 
+## Current flat capsule override (v1.6)
+
+- Keep the visible capsule at `520×88px` with a 28px radius. The rail must read as a flat glass bar, not a stadium pill.
+- Preserve the three primary icon-only features and the compact Codex block.
+- The active 8-bit state avatar has a dedicated 62px slot between the three feature icons and Codex. It must never overlap Codex; idle sleep art remains centered on the upper edge.
+- The ellipsis menu contains exactly two actions: minimize the companion and quit the application. Captions, pause/resume, and end-session are not menu items.
+- Keep the existing 8-bit state mapping and animations, 2D Modern JK portrait, dragging, position persistence, minimized mode, provider interfaces, singing entry, and wardrobe entry.
+- `docs/PRD.md` v1.6 is authoritative.
+
 ## Current compact spectrum override (v1.5)
 
 - The persistent spectrum capsule is `520×108px`; this supersedes the 840×146 Electron size in v1.4 while retaining the same single-layer navy, violet-left/cyan-right visual language.

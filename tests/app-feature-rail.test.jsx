@@ -7,99 +7,89 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("Gallery 02 minimal feature rail", () => {
-  it("renders three icon-only features and the reference-style Codex status", async () => {
+describe("flat spectrum feature rail", () => {
+  it("renders three primary features, Codex, and a two-action utility menu", async () => {
     const { container } = render(<App />);
+    await act(async () => Promise.resolve());
 
     expect(container.querySelector(".status-rail.drag-surface")).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: "唤醒照月" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "给我唱首歌，功能准备中" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "换装，功能准备中" })).toBeInTheDocument();
     expect(container.querySelectorAll(".icon-feature-button")).toHaveLength(3);
     expect(container.querySelectorAll(".avatar-button img")).toHaveLength(1);
-    expect(container.querySelectorAll(".rail-flow-edge i")).toHaveLength(2);
-    expect(container.querySelector(".feature-tile")).toBeNull();
+    expect(container.querySelector(".runtime-avatar-slot")).toBeNull();
     expect(screen.getByLabelText("Codex Standby")).toHaveTextContent("CodexReady");
-    expect(screen.getByLabelText("Codex Standby").querySelectorAll(".codex-meter i")).toHaveLength(5);
-    expect(screen.getByRole("button", { name: "打开更多控制" })).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByRole("menu", { name: "更多控制" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "打开更多控制" }));
-    expect(screen.getByRole("menu", { name: "更多控制" }).querySelectorAll("button")).toHaveLength(4);
-    expect(screen.getByRole("menuitem", { name: "开启字幕" })).toBeDisabled();
-    expect(screen.getByRole("menuitem", { name: "结束对话" })).toBeDisabled();
+    const trigger = container.querySelector(".utility-menu-trigger");
+    fireEvent.click(trigger);
+    const menu = screen.getByRole("menu", { name: "更多控制" });
+    expect(menu.querySelectorAll("button")).toHaveLength(2);
+    expect(screen.getByRole("menuitem", { name: "缩小悬浮窗" })).toBeEnabled();
+    expect(screen.getByRole("menuitem", { name: "退出程序" })).toBeEnabled();
+    expect(screen.queryByRole("menuitem", { name: "开启字幕" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "暂停聆听" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "结束对话" })).not.toBeInTheDocument();
   });
 
-  it("closes the icon-only utility menu with Escape and outside interaction", async () => {
-    render(<App />);
-    await screen.findByRole("button", { name: "打开更多控制" });
+  it("closes the utility menu with Escape and outside interaction", async () => {
+    const { container } = render(<App />);
+    await act(async () => Promise.resolve());
+    const trigger = container.querySelector(".utility-menu-trigger");
 
-    fireEvent.click(screen.getByRole("button", { name: "打开更多控制" }));
+    fireEvent.click(trigger);
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("menu", { name: "更多控制" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "打开更多控制" }));
+    fireEvent.click(trigger);
     fireEvent.pointerDown(document.body);
     expect(screen.queryByRole("menu", { name: "更多控制" })).not.toBeInTheDocument();
   });
 
-  it("shows honest placeholder feedback without starting a session", async () => {
-    render(<App />);
-    await screen.findByRole("button", { name: "唤醒照月" });
+  it("keeps singing and wardrobe as honest near-term entries", async () => {
+    const { container } = render(<App />);
+    await act(async () => Promise.resolve());
 
-    fireEvent.click(screen.getByRole("button", { name: "给我唱首歌，功能准备中" }));
+    fireEvent.click(container.querySelector(".feature-sing"));
     expect(screen.getByRole("status")).toHaveTextContent("唱歌功能准备中");
-
-    fireEvent.click(screen.getByRole("button", { name: "换装，功能准备中" }));
+    fireEvent.click(container.querySelector(".feature-wardrobe"));
     expect(screen.getByRole("status")).toHaveTextContent("换装功能准备中");
-    expect(screen.getByRole("button", { name: "唤醒照月" })).toBeInTheDocument();
   });
 
-  it("collapses to a small draggable rail and can expand again", async () => {
-    render(<App />);
-    await screen.findByRole("button", { name: "唤醒照月" });
+  it("collapses to the small draggable rail and restores", async () => {
+    const { container } = render(<App />);
+    await act(async () => Promise.resolve());
 
-    fireEvent.click(screen.getByRole("button", { name: "打开更多控制" }));
+    fireEvent.click(container.querySelector(".utility-menu-trigger"));
     fireEvent.click(screen.getByRole("menuitem", { name: "缩小悬浮窗" }));
     expect(screen.getByLabelText("已缩小悬浮窗")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "展开悬浮窗" })).toBeInTheDocument();
-
     fireEvent.click(screen.getByRole("button", { name: "展开悬浮窗" }));
-    expect(screen.getByRole("button", { name: "打开更多控制" })).toBeInTheDocument();
+    expect(container.querySelector(".utility-menu-trigger")).toBeInTheDocument();
   });
 
-  it("wakes into listening, enables utilities, and shows Codex working while thinking", async () => {
-    vi.useFakeTimers();
-    render(<App />);
+  it("moves the active 8-bit avatar between the feature icons and Codex", async () => {
+    const { container } = render(<App />);
     await act(async () => Promise.resolve());
-    const wakeButton = screen.getByRole("button", { name: "唤醒照月" });
 
-    fireEvent.click(wakeButton);
+    fireEvent.click(container.querySelector(".feature-companion"));
+    const mainline = container.querySelector(".rail-mainline");
+    const features = mainline.querySelector(".icon-feature-group");
+    const slot = mainline.querySelector(".runtime-avatar-slot");
+    const codex = mainline.querySelector(".codex-status");
 
-    expect(screen.getByRole("button", { name: "正在听，点击切换聆听" })).toHaveClass("state-listening");
-    fireEvent.click(screen.getByRole("button", { name: "打开更多控制" }));
-    expect(screen.getByRole("menuitem", { name: "开启字幕" })).toBeEnabled();
-    expect(screen.getByRole("menuitem", { name: "结束对话" })).toBeEnabled();
+    expect(container.querySelector(".desktop-stage")).toHaveClass("state-listening", "is-awake");
+    expect(slot).toBeInTheDocument();
+    expect(slot.querySelector(".runtime-avatar-button img")).toHaveAttribute("src", expect.stringContaining("listening.png"));
+    expect(features.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(slot.compareDocumentPosition(codex) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("keeps the reserved avatar slot while conversation state advances", async () => {
+    vi.useFakeTimers();
+    const { container } = render(<App />);
+    await act(async () => Promise.resolve());
+    fireEvent.click(container.querySelector(".feature-companion"));
 
     await act(async () => vi.advanceTimersByTimeAsync(1600));
+    expect(container.querySelector(".desktop-stage")).toHaveClass("state-thinking");
+    expect(container.querySelector(".runtime-avatar-slot img")).toHaveAttribute("src", expect.stringContaining("thinking.png"));
     expect(screen.getByLabelText("Codex Working")).toHaveTextContent("Generating…");
-  });
-
-  it("runs caption, pause, and end actions from the utility menu", async () => {
-    render(<App />);
-    await act(async () => Promise.resolve());
-    fireEvent.click(screen.getByRole("button", { name: "唤醒照月" }));
-
-    fireEvent.click(screen.getByRole("button", { name: "打开更多控制" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "开启字幕" }));
-    expect(screen.queryByRole("menu", { name: "更多控制" })).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "打开更多控制" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "暂停聆听" }));
-    fireEvent.click(screen.getByRole("button", { name: "打开更多控制" }));
-    expect(screen.getByRole("menuitem", { name: "继续聆听" })).toBeEnabled();
-
-    fireEvent.click(screen.getByRole("menuitem", { name: "结束对话" }));
-    expect(screen.getByRole("button", { name: "唤醒照月" })).toBeInTheDocument();
   });
 });

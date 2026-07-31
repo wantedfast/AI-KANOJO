@@ -50,7 +50,7 @@ if (code !== 0) throw new Error(`Electron smoke process exited with code ${code}
 if (!duplicateProbe || await duplicateProbe !== 0) throw new Error("Electron single-instance probe failed");
 const report = JSON.parse(await readFile(reportPath, "utf8"));
 if (!report.window.alwaysOnTop) throw new Error("Electron window was not always-on-top");
-if (!report.window.dragHandle || report.window.dragHandle.height < 100) throw new Error("Electron full-rail drag surface is missing or too small");
+if (!report.window.dragHandle || report.window.dragHandle.height < 80) throw new Error("Electron full-rail drag surface is missing or too small");
 if (report.window.movementRoom.left + report.window.movementRoom.right < 200) throw new Error("Electron window does not preserve 200px of horizontal movement room");
 if (!report.window.dragRegionTracked || report.window.hitRegionCount < 1) throw new Error("Electron main process is not tracking the drag hit region");
 if (!report.window.manualDragApi) throw new Error("Electron manual drag API is not exposed through preload");
@@ -66,8 +66,11 @@ if (
   || !report.renderer.beforeExternalStop
   || !report.renderer.afterExternalStop
   || !report.renderer.lockedApplied
+  || !report.renderer.runtimeAvatar?.slotPresent
+  || !report.renderer.runtimeAvatar.orderCorrect
+  || report.renderer.runtimeAvatar.overlapsCodex
   || !report.renderer.utilityMenu?.visible
-  || report.renderer.utilityMenu.itemCount !== 4
+  || report.renderer.utilityMenu.itemCount !== 2
   || !report.renderer.utilityMenu.hitTracked
   || !report.renderer.minimizeToggle?.restoreVisible
   || report.renderer.minimizeToggle.compactWidth > 130

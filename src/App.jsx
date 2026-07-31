@@ -1,14 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ClosedCaptioning,
   DotsThreeVertical,
   Lock,
   LockOpen,
   Minus,
   Microphone,
   MusicNotes,
-  Pause,
-  Play,
   TShirt,
   ArrowsOutSimple,
   X,
@@ -34,6 +31,7 @@ const api = window.kanojo ?? {
   startWindowDrag: () => {},
   moveWindowDrag: () => {},
   endWindowDrag: () => {},
+  quitApp: () => {},
   onAudioStop: () => () => {},
   onLockedChanged: () => () => {},
   onOpenSettings: () => () => {},
@@ -78,7 +76,6 @@ export function App() {
   const [snapshot, setSnapshot] = useState(controller.getSnapshot());
   const [activeSession, setActiveSession] = useState(false);
   const [paused, setPaused] = useState(false);
-  const [captions, setCaptions] = useState(false);
   const [panel, setPanel] = useState("compact");
   const [settings, setSettings] = useState({ demoMode: true, deepseekModel: "deepseek-v4-flash", voiceId: "", microphoneId: "" });
   const [credentials, setCredentials] = useState({ deepseek: false, elevenlabs: false });
@@ -298,7 +295,6 @@ export function App() {
     controller.endSession();
     setPaused(false);
     setActiveSession(false);
-    setCaptions(false);
     setUtilityMenuOpen(false);
   };
 
@@ -370,8 +366,6 @@ export function App() {
 
   const meta = STATE_META[snapshot.state];
   const codexWorking = activeSession && ["thinking", "speaking"].includes(snapshot.state);
-  const caption = snapshot.error || snapshot.partial || snapshot.draftReply;
-  const isBusy = ["thinking", "speaking"].includes(snapshot.state);
   return (
     <main className={`desktop-stage state-${snapshot.state} ${activeSession ? "is-awake" : "is-asleep"} ${minimized ? "is-minimized" : ""} ${panel === "settings" ? "has-settings" : ""} ${api.isDesktop ? "is-desktop-runtime" : "is-browser-preview"}`}>
       <section className="companion-shell" aria-label="AI-KANOJO 桌面女友">
@@ -386,17 +380,19 @@ export function App() {
           </button>
         )}
 
-        <button
-          className={`avatar-button animation-${meta.animation}`}
-          style={{ "--seat-anchor-y": meta.seatAnchor, "--seat-bottom": `${(meta.seatAnchor - 1) * 150}px` }}
-          type="button"
-          onClick={activeSession ? toggleListening : wakeCompanion}
-          aria-label={activeSession ? `${meta.label}角色，点击切换聆听` : "唤醒照月角色"}
-        >
-          <img src={meta.src} alt={`8-bit 罗照月，${meta.label}`} draggable="false" />
-          <span className="avatar-halo" />
-          {!activeSession && <span className="wake-hint">唤醒照月</span>}
-        </button>
+        {(!activeSession || minimized) && (
+          <button
+            className={`avatar-button animation-${meta.animation}`}
+            style={{ "--seat-anchor-y": meta.seatAnchor, "--seat-bottom": `${(meta.seatAnchor - 1) * 150}px` }}
+            type="button"
+            onClick={activeSession ? toggleListening : wakeCompanion}
+            aria-label={activeSession ? `${meta.label}角色，点击切换聆听` : "唤醒照月角色"}
+          >
+            <img src={meta.src} alt={`8-bit 罗照月，${meta.label}`} draggable="false" />
+            <span className="avatar-halo" />
+            {!activeSession && <span className="wake-hint">唤醒照月</span>}
+          </button>
+        )}
 
         <div
           className={`status-rail drag-surface ${locked ? "is-locked" : ""}`}
@@ -439,6 +435,21 @@ export function App() {
               />
             </div>
 
+            {activeSession && (
+              <div className="runtime-avatar-slot" aria-label={`${meta.label} 8-bit 工作状态`}>
+                <button
+                  className={`avatar-button runtime-avatar-button animation-${meta.animation}`}
+                  style={{ "--seat-anchor-y": meta.seatAnchor, "--seat-bottom": `${(meta.seatAnchor - 1) * 86}px` }}
+                  type="button"
+                  onClick={toggleListening}
+                  aria-label={`${meta.label}角色，点击切换聆听`}
+                >
+                  <img src={meta.src} alt={`8-bit 罗照月，${meta.label}`} draggable="false" />
+                  <span className="avatar-halo" />
+                </button>
+              </div>
+            )}
+
             <span className="rail-main-spacer" />
             <CodexStatus working={codexWorking} />
 
@@ -456,30 +467,18 @@ export function App() {
               </button>
               {utilityMenuOpen && (
                 <div className="utility-menu" id="utility-menu" role="menu" aria-label="更多控制">
-                  <button type="button" role="menuitem" className={`round-button utility-menu-button cc-button ${captions ? "is-selected" : ""}`} onClick={() => runUtilityAction(() => setCaptions((value) => !value))} disabled={!activeSession} aria-label={captions ? "关闭字幕" : "开启字幕"}>
-                    <ClosedCaptioning weight="light" />
-                    <span className="utility-menu-tooltip" aria-hidden="true">字幕</span>
-                  </button>
-                  <button type="button" role="menuitem" className="round-button utility-menu-button" onClick={() => runUtilityAction(toggleListening)} disabled={!activeSession || isBusy} aria-label={paused ? "继续聆听" : "暂停聆听"}>
-                    {paused ? <Play weight="light" /> : <Pause weight="light" />}
-                    <span className="utility-menu-tooltip" aria-hidden="true">{paused ? "继续" : "暂停"}</span>
-                  </button>
-                  <button type="button" role="menuitem" className="round-button utility-menu-button end-button" onClick={() => runUtilityAction(endSession)} disabled={!activeSession} aria-label="结束对话">
-                    <X weight="light" />
-                    <span className="utility-menu-tooltip" aria-hidden="true">结束</span>
-                  </button>
                   <button type="button" role="menuitem" className="round-button utility-menu-button minimize-button" onClick={() => runUtilityAction(() => { setPanel("compact"); setMinimized(true); })} aria-label="缩小悬浮窗">
                     <Minus weight="light" />
                     <span className="utility-menu-tooltip" aria-hidden="true">缩小</span>
+                  </button>
+                  <button type="button" role="menuitem" className="round-button utility-menu-button end-button" onClick={() => runUtilityAction(() => api.quitApp?.())} aria-label="退出程序">
+                    <X weight="light" />
+                    <span className="utility-menu-tooltip" aria-hidden="true">退出</span>
                   </button>
                 </div>
               )}
             </div>
           </div>
-
-          {captions && activeSession && (
-            <div className="caption-strip" aria-live="polite">{caption || "正在听……"}</div>
-          )}
 
           {featureNotice && <div className="feature-notice" role="status">{featureNotice}</div>}
           </>)}

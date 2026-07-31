@@ -271,6 +271,7 @@ function installIpc() {
   ipcMain.on("window:drag-start", (_event, point) => startWindowDrag(point));
   ipcMain.on("window:drag-move", (_event, point) => moveWindowDrag(point));
   ipcMain.on("window:drag-end", () => { void endWindowDrag(); });
+  ipcMain.on("app:quit", () => app.quit());
   ipcMain.on("window:set-hit-regions", (_event, regions) => {
     hitRegions = Array.isArray(regions) ? regions
       .filter((region) => [region?.x, region?.y, region?.width, region?.height].every(Number.isFinite))
@@ -297,7 +298,7 @@ async function runSmokeCheck(reportPath) {
     })()
   `, true);
   const manualDragApi = await window.webContents.executeJavaScript(`
-    ["startWindowDrag", "moveWindowDrag", "endWindowDrag"].every((name) => typeof window.kanojo?.[name] === "function")
+    ["startWindowDrag", "moveWindowDrag", "endWindowDrag", "quitApp"].every((name) => typeof window.kanojo?.[name] === "function")
   `, true);
   const visualBounds = await window.webContents.executeJavaScript(`
     (() => {
@@ -348,6 +349,27 @@ async function runSmokeCheck(reportPath) {
       const image = document.querySelector('.portrait-button img');
       const rect = image?.getBoundingClientRect();
       return image ? { complete: image.complete, naturalWidth: image.naturalWidth, src: image.src, rect: rect && { x: rect.x, y: rect.y, width: rect.width, height: rect.height } } : null;
+    })()
+  `, true);
+  renderer.runtimeAvatar = await window.webContents.executeJavaScript(`
+    (() => {
+      const slot = document.querySelector('.runtime-avatar-slot');
+      const avatar = slot?.querySelector('img');
+      const features = document.querySelector('.icon-feature-group');
+      const codex = document.querySelector('.codex-status');
+      const rect = (element) => {
+        const value = element?.getBoundingClientRect();
+        return value ? { x: value.x, y: value.y, width: value.width, height: value.height, right: value.right, bottom: value.bottom } : null;
+      };
+      const avatarRect = rect(avatar);
+      const codexRect = rect(codex);
+      return {
+        slotPresent: Boolean(slot),
+        orderCorrect: Boolean(features && slot && codex && (features.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING) && (slot.compareDocumentPosition(codex) & Node.DOCUMENT_POSITION_FOLLOWING)),
+        avatarRect,
+        codexRect,
+        overlapsCodex: Boolean(avatarRect && codexRect && avatarRect.x < codexRect.right && avatarRect.right > codexRect.x && avatarRect.y < codexRect.bottom && avatarRect.bottom > codexRect.y),
+      };
     })()
   `, true);
   await writeFile(path.join(smokeDirectory, "electron-awake.png"), (await window.webContents.capturePage()).toPNG());
