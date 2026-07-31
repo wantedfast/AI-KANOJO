@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.vite/
+coverage/
+test-results/
+design-qa/captures/
+design-qa/electron-smoke-user-data/
+*.log
+.env
+.env.*
+!.env.example
+.data/
+*.local

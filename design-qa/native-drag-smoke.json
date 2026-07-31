@@ -1,0 +1,8 @@
+{
+  "method": "Windows user32 native mouse input",
+  "target": "visible drag handle inside .drag-strip",
+  "before": { "x": 117, "y": 0 },
+  "after": { "x": 227, "y": 0 },
+  "movedBy": { "x": 110, "y": 0 },
+  "passed": true
+}

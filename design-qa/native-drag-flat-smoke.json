@@ -1,0 +1,18 @@
+{
+  "windowTitle": "AI-KANOJO · 罗照月",
+  "windowSize": {
+    "width": 1040,
+    "height": 620
+  },
+  "input": "Windows native mouse drag on the manual upper drag surface",
+  "beforeX": 0,
+  "afterX": 240,
+  "nativeDeltaX": 240,
+  "inputDistance": 240,
+  "persistedX": 240,
+  "persistedY": 0,
+  "restoredAfterRelaunchX": 240,
+  "restoredAfterRelaunchY": 0,
+  "persistenceTolerance": 2,
+  "passed": true
+}

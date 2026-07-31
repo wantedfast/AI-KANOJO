@@ -1,0 +1,110 @@
+{
+  "window": {
+    "alwaysOnTop": true,
+    "dragHandle": {
+      "x": 316,
+      "y": 502,
+      "width": 520,
+      "height": 108,
+      "hitClass": "rail-mainline",
+      "hitWithinDrag": true,
+      "appRegion": "no-drag",
+      "controlsNoDrag": true
+    },
+    "visualBounds": {
+      "rail": {
+        "x": 260,
+        "y": 484,
+        "width": 520,
+        "height": 108
+      },
+      "topLine": null,
+      "mainLine": {
+        "x": 260.66668701171875,
+        "y": 484.66668701171875,
+        "width": 518.6666870117188,
+        "height": 106.66667175292969
+      },
+      "avatarButton": {
+        "x": 425,
+        "y": 404,
+        "width": 190,
+        "height": 80
+      },
+      "avatarImage": {
+        "x": 440,
+        "y": 419.26043701171875,
+        "width": 160,
+        "height": 64.73958587646484
+      }
+    },
+    "hitRegionCount": 16,
+    "dragRegionTracked": true,
+    "manualDragApi": true,
+    "dragReady": true,
+    "movementRoom": {
+      "left": 120,
+      "right": 120,
+      "up": 56,
+      "down": -4
+    },
+    "initial": {
+      "x": 120,
+      "y": 56,
+      "width": 1040,
+      "height": 620
+    },
+    "moved": {
+      "x": 184,
+      "y": -8,
+      "width": 1040,
+      "height": 620
+    },
+    "movedBy": {
+      "x": 64,
+      "y": -64
+    },
+    "persistedAfterDrag": {
+      "x": 184,
+      "y": -8,
+      "width": 1040,
+      "height": 620
+    }
+  },
+  "renderer": {
+    "beforeIdle": true,
+    "afterListening": true,
+    "portrait": {
+      "complete": true,
+      "naturalWidth": 438,
+      "src": "file:///C:/Users/wangf/Documents/AI-KANOJO/dist/client/avatar/outfits/front/02-modern-jk.png",
+      "rect": {
+        "x": 3.8782548904418945,
+        "y": 54.713470458984375,
+        "width": 270,
+        "height": 613.3541870117188
+      }
+    },
+    "beforeExternalStop": true,
+    "afterExternalStop": true,
+    "lockedApplied": true,
+    "utilityMenu": {
+      "visible": true,
+      "itemCount": 4,
+      "rect": {
+        "x": 713.7252197265625,
+        "y": 338.0900573730469,
+        "width": 47.21630859375,
+        "height": 166.5684814453125
+      },
+      "hitTracked": true
+    },
+    "minimizeToggle": {
+      "compactWidth": 112,
+      "compactHeight": 44,
+      "restoreVisible": true,
+      "expandedWidth": 520
+    },
+    "settingsVisible": true
+  }
+}

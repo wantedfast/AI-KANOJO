@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "characterId": "luo-zhaoyue-jk-8bit",
+  "defaultState": "idle",
+  "basePath": "./avatar/8bit/states",
+  "states": {
+    "idle": {
+      "src": "./avatar/8bit/states/idle.png",
+      "animation": "sleep-breathe",
+      "label": "休眠",
+      "naturalSize": { "width": 1164, "height": 471 },
+      "anchor": { "x": 0.5, "y": 1 }
+    },
+    "listening": {
+      "src": "./avatar/8bit/states/listening.png",
+      "animation": "listen-pulse",
+      "label": "正在听",
+      "naturalSize": { "width": 262, "height": 520 },
+      "anchor": { "x": 0.5, "y": 0.55 }
+    },
+    "thinking": {
+      "src": "./avatar/8bit/states/thinking.png",
+      "animation": "thinking-flicker",
+      "label": "正在想",
+      "naturalSize": { "width": 238, "height": 520 },
+      "anchor": { "x": 0.5, "y": 0.58 }
+    },
+    "speaking": {
+      "src": "./avatar/8bit/states/listening.png",
+      "animation": "speech-bob",
+      "label": "正在说",
+      "naturalSize": { "width": 262, "height": 520 },
+      "anchor": { "x": 0.5, "y": 0.55 },
+      "reuses": "listening"
+    },
+    "completed": {
+      "src": "./avatar/8bit/states/completed.png",
+      "animation": "happy-bounce",
+      "label": "完成",
+      "naturalSize": { "width": 194, "height": 520 },
+      "anchor": { "x": 0.5, "y": 0.57 }
+    },
+    "error": {
+      "src": "./avatar/8bit/states/thinking.png",
+      "animation": "error-shake",
+      "label": "需要注意",
+      "naturalSize": { "width": 238, "height": 520 },
+      "anchor": { "x": 0.5, "y": 0.58 },
+      "reuses": "thinking"
+    }
+  }
+}
