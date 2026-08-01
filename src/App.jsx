@@ -4,7 +4,7 @@ import {
   LockOpen,
   Microphone,
   MusicNotes,
-  TShirt,
+  ChatCircleDots,
   ArrowsOutSimple,
 } from "@phosphor-icons/react";
 import { createCompanionController, STATE_META } from "./companion-controller.js";
@@ -65,6 +65,14 @@ function CodexStatus({ working }) {
         {Array.from({ length: 5 }, (_, index) => <i key={index} />)}
       </span>
     </div>
+  );
+}
+
+function SleepIndicator() {
+  return (
+    <span className="sleep-indicator" aria-hidden="true">
+      <i>Z</i><i>Z</i><i>Z</i>
+    </span>
   );
 }
 
@@ -336,7 +344,7 @@ export function App() {
   };
 
   const handleSingRequest = () => showFeatureNotice("唱歌功能准备中");
-  const handleWardrobeRequest = () => showFeatureNotice("换装功能准备中");
+  const handleChatRequest = () => showFeatureNotice("聊天功能准备中");
 
   const meta = STATE_META[snapshot.state];
   const codexWorking = activeSession && ["thinking", "speaking"].includes(snapshot.state);
@@ -355,7 +363,7 @@ export function App() {
           </button>
         )}
 
-        {(!activeSession || minimized) && (
+        {minimized && (
           <button
             className={`avatar-button animation-${meta.animation}`}
             style={{ "--seat-anchor-y": meta.seatAnchor, "--seat-bottom": `${(meta.seatAnchor - 1) * 150}px` }}
@@ -365,6 +373,7 @@ export function App() {
           >
             <img src={meta.src} alt={`8-bit 罗照月，${meta.label}`} draggable="false" />
             <span className="avatar-halo" />
+            {snapshot.state === "idle" && <SleepIndicator />}
             {!activeSession && <span className="wake-hint">唤醒照月</span>}
           </button>
         )}
@@ -403,24 +412,25 @@ export function App() {
                 label="给我唱首歌，功能准备中"
               />
               <IconFeatureButton
-                id="wardrobe"
-                onClick={handleWardrobeRequest}
-                icon={<TShirt weight="light" />}
-                label="换装，功能准备中"
+                id="chat"
+                onClick={handleChatRequest}
+                icon={<ChatCircleDots weight="light" />}
+                label="聊天，功能准备中"
               />
             </div>
 
-            {activeSession && (
-              <div className="runtime-avatar-slot" aria-label={`${meta.label} 8-bit 工作状态`}>
+            {!minimized && (
+              <div className="runtime-avatar-slot" aria-label={`${meta.label} 8-bit 状态`}>
                 <button
                   className={`avatar-button runtime-avatar-button animation-${meta.animation}`}
                   style={{ "--seat-anchor-y": meta.seatAnchor, "--seat-bottom": `${(meta.seatAnchor - 1) * 160}px` }}
                   type="button"
-                  onClick={toggleListening}
-                  aria-label={`${meta.label}角色，点击切换聆听`}
+                  onClick={activeSession ? toggleListening : wakeCompanion}
+                  aria-label={activeSession ? `${meta.label}角色，点击切换聆听` : "唤醒照月角色"}
                 >
                   <img src={meta.src} alt={`8-bit 罗照月，${meta.label}`} draggable="false" />
                   <span className="avatar-halo" />
+                  {snapshot.state === "idle" && <SleepIndicator />}
                 </button>
               </div>
             )}

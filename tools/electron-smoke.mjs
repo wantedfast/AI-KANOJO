@@ -93,7 +93,7 @@ if (
   || !report.renderer.minimizeToggle?.restoreVisible
   || Math.abs(report.renderer.minimizeToggle.compactWidth - 160) > 1
   || report.renderer.minimizeToggle.compactHeight > 50
-  || Math.abs(report.renderer.minimizeToggle.expandedWidth - 500) > 1
+  || Math.abs(report.renderer.minimizeToggle.expandedWidth - 520) > 1
   || !report.renderer.settingsVisible
 ) {
   throw new Error(`Renderer smoke assertions failed: ${JSON.stringify(report.renderer)}`);

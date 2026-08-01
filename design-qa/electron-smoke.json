@@ -2,10 +2,10 @@
   "window": {
     "alwaysOnTop": true,
     "dragHandle": {
-      "x": 326,
+      "x": 316,
       "y": 522,
-      "width": 500,
-      "height": 88,
+      "width": 520,
+      "height": 80,
       "hitClass": "rail-mainline",
       "hitWithinDrag": true,
       "appRegion": "no-drag",
@@ -13,29 +13,29 @@
     },
     "visualBounds": {
       "rail": {
-        "x": 270,
+        "x": 260,
         "y": 504,
-        "width": 500,
-        "height": 88
+        "width": 520,
+        "height": 80
       },
       "topLine": null,
       "mainLine": {
-        "x": 270.66668701171875,
+        "x": 260.66668701171875,
         "y": 504.66668701171875,
-        "width": 498.66668701171875,
-        "height": 86.66667175292969
+        "width": 518.6666870117188,
+        "height": 78.66667175292969
       },
       "avatarButton": {
-        "x": 425,
-        "y": 424,
+        "x": 344.66668701171875,
+        "y": 424.66668701171875,
         "width": 190,
         "height": 80
       },
       "avatarImage": {
-        "x": 440,
-        "y": 439.26043701171875,
-        "width": 160,
-        "height": 64.73958587646484
+        "x": 359.66632080078125,
+        "y": 439.9274597167969,
+        "width": 160.00070190429688,
+        "height": 64.73921966552734
       }
     },
     "hitRegionCount": 17,
@@ -79,8 +79,8 @@
       "naturalWidth": 438,
       "src": "file:///C:/Users/wangf/Documents/AI-KANOJO/dist/client/avatar/outfits/front/02-modern-jk.png",
       "rect": {
-        "x": 55.87837219238281,
-        "y": 152.29673767089844,
+        "x": 55.825775146484375,
+        "y": 152.32595825195312,
         "width": 220,
         "height": 499.7708435058594
       }
@@ -89,20 +89,20 @@
       "slotPresent": true,
       "orderCorrect": true,
       "avatarRect": {
-        "x": 409.359375,
-        "y": 415.25567626953125,
+        "x": 399.359375,
+        "y": 415.37353515625,
         "width": 80.61458587646484,
         "height": 160,
-        "right": 489.97396087646484,
-        "bottom": 575.2556762695312
+        "right": 479.97396087646484,
+        "bottom": 575.37353515625
       },
       "codexRect": {
-        "x": 527.3333740234375,
-        "y": 524,
+        "x": 537.3333740234375,
+        "y": 520,
         "width": 190,
         "height": 48,
-        "right": 717.3333740234375,
-        "bottom": 572
+        "right": 727.3333740234375,
+        "bottom": 568
       },
       "longEdge": 160,
       "overlapsCodex": false
@@ -113,7 +113,7 @@
       "idle": true,
       "portraitHidden": true,
       "src": "./avatar/8bit/states/idle.png",
-      "longEdge": 159.99240112304688
+      "longEdge": 159.992431640625
     },
     "lockedApplied": true,
     "windowControls": {
@@ -130,8 +130,8 @@
       "vertical": true,
       "visibleGap": 8,
       "rect": {
-        "x": 727.3333740234375,
-        "y": 528,
+        "x": 737.3333740234375,
+        "y": 524,
         "width": 32,
         "height": 40
       },
@@ -141,7 +141,7 @@
       "compactWidth": 160,
       "compactHeight": 44,
       "restoreVisible": true,
-      "expandedWidth": 500
+      "expandedWidth": 520
     },
     "settingsVisible": true
   }

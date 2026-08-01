@@ -15,7 +15,8 @@ describe("flat spectrum feature rail", () => {
     expect(container.querySelector(".status-rail.drag-surface")).toBeInTheDocument();
     expect(container.querySelectorAll(".icon-feature-button")).toHaveLength(3);
     expect(container.querySelectorAll(".avatar-button img")).toHaveLength(1);
-    expect(container.querySelector(".runtime-avatar-slot")).toBeNull();
+    expect(container.querySelector(".runtime-avatar-slot")).toBeInTheDocument();
+    expect(container.querySelectorAll(".sleep-indicator i")).toHaveLength(3);
     expect(screen.getByLabelText("Codex Standby")).toHaveTextContent("CodexReady");
 
     const controls = screen.getByLabelText("窗口控制");
@@ -31,14 +32,14 @@ describe("flat spectrum feature rail", () => {
     expect(container.querySelector(".utility-menu-trigger")).not.toBeInTheDocument();
   });
 
-  it("keeps singing and wardrobe as honest near-term entries", async () => {
+  it("keeps singing and chat as honest near-term entries", async () => {
     const { container } = render(<App />);
     await act(async () => Promise.resolve());
 
     fireEvent.click(container.querySelector(".feature-sing"));
     expect(screen.getByRole("status")).toHaveTextContent("唱歌功能准备中");
-    fireEvent.click(container.querySelector(".feature-wardrobe"));
-    expect(screen.getByRole("status")).toHaveTextContent("换装功能准备中");
+    fireEvent.click(container.querySelector(".feature-chat"));
+    expect(screen.getByRole("status")).toHaveTextContent("聊天功能准备中");
   });
 
   it("collapses to the small draggable rail and restores", async () => {
