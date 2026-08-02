@@ -19,6 +19,7 @@ function createFrontendAdapter(initial = {}) {
       return () => listeners.delete(listener);
     }),
     sendText: vi.fn(() => true),
+    retryVoiceTurn: vi.fn(() => true),
     startVoice: vi.fn(() => publish({ phase: "listening", transcript: "", reply: "" })),
     pauseVoice: vi.fn(() => publish({ phase: "paused" })),
     resumeVoice: vi.fn(() => publish({ phase: "listening" })),
@@ -41,12 +42,12 @@ describe("frontend conversation surfaces", () => {
     expect(screen.getByLabelText("简短语音对话")).toHaveTextContent("正在听");
 
     act(() => adapter.publish({ phase: "thinking", transcript: "今天过得怎么样？" }));
-    expect(screen.getByLabelText("简短语音对话")).toHaveTextContent("思考中");
+    expect(screen.getByLabelText("简短语音对话")).toHaveTextContent("正在思考");
     expect(screen.getByLabelText("简短语音对话")).toHaveTextContent("今天过得怎么样？");
     expect(container.querySelector(".desktop-stage")).toHaveClass("state-thinking");
 
     act(() => adapter.publish({ phase: "speaking", reply: "见到你之后，心情就更好啦。" }));
-    expect(screen.getByLabelText("简短语音对话")).toHaveTextContent("正在说");
+    expect(screen.getByLabelText("简短语音对话")).toHaveTextContent("正在回复");
     expect(screen.getByLabelText("简短语音对话")).toHaveTextContent("见到你之后，心情就更好啦。");
     expect(container.querySelector(".desktop-stage")).toHaveClass("state-speaking");
   });
@@ -67,6 +68,36 @@ describe("frontend conversation surfaces", () => {
     expect(adapter.endVoice).toHaveBeenCalledOnce();
     expect(screen.queryByLabelText("简短语音对话")).not.toBeInTheDocument();
     expect(container.querySelector(".desktop-stage")).toHaveClass("state-idle", "is-asleep");
+  });
+
+  it("shows separate partial and final captions and exposes retry for a failed turn", async () => {
+    const adapter = createFrontendAdapter();
+    const { container } = render(<App conversationAdapter={adapter} />);
+    await act(async () => Promise.resolve());
+    fireEvent.click(container.querySelector(".feature-companion"));
+
+    act(() => adapter.publish({
+      phase: "transcribing",
+      voiceState: "Transcribing",
+      voiceTurns: [
+        { turnId: "turn-1", transcriptPartial: "今天天", transcriptFinal: "", status: "partial" },
+      ],
+    }));
+    expect(screen.getByTestId("voice-debug-state")).toHaveTextContent("Transcribing");
+    expect(container.querySelector(".voice-caption-partial")).toHaveTextContent("今天天");
+
+    act(() => adapter.publish({
+      phase: "error",
+      voiceState: "Error",
+      voiceTurns: [
+        { turnId: "turn-1", transcriptPartial: "", transcriptFinal: "今天天气很好", status: "complete" },
+        { turnId: "turn-2", transcriptPartial: "", transcriptFinal: "陪我出去走走", status: "send_failed", error: "发送失败，可重试" },
+      ],
+    }));
+    expect(screen.getAllByText("今天天气很好")).toHaveLength(1);
+    expect(screen.getAllByText("陪我出去走走")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    expect(adapter.retryVoiceTurn).toHaveBeenCalledWith("turn-2");
   });
 
   it("opens text chat, sends with Enter, and keeps Shift+Enter as a newline", async () => {

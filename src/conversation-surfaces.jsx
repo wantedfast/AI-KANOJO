@@ -14,8 +14,10 @@ const PHASE_LABELS = {
   idle: "语音待机",
   connecting: "正在连接…",
   listening: "正在听…",
-  thinking: "思考中…",
-  speaking: "正在说…",
+  transcribing: "正在识别…",
+  sending: "正在发送…",
+  thinking: "正在思考…",
+  speaking: "正在回复…",
   completed: "回答完成",
   paused: "已暂停",
   error: "出错了",
@@ -104,31 +106,60 @@ export function TextChatPanel({ snapshot, onClose, onSend }) {
   );
 }
 
-export function VoiceConversationPopover({ snapshot, onPause, onResume, onEnd }) {
+export function VoiceConversationPopover({ snapshot, onPause, onResume, onEnd, onRetry }) {
   const paused = snapshot.phase === "paused";
+  const recoverable = paused || snapshot.phase === "error";
+  const turns = snapshot.voiceTurns || [];
+  const assistantStatus = snapshot.reply || (snapshot.phase === "thinking" || snapshot.phase === "sending"
+    ? "正在思考…"
+    : snapshot.phase === "speaking" ? "正在回复…" : "");
   return (
     <section className={`conversation-panel voice-popover phase-${snapshot.phase}`} aria-label="简短语音对话" data-testid="voice-popover">
       <header className="voice-status-row">
         <span className="voice-status-icon" aria-hidden="true"><Waveform weight="light" /></span>
         <strong>{PHASE_LABELS[snapshot.phase] ?? PHASE_LABELS.idle}</strong>
+        <span className="voice-debug-state" data-testid="voice-debug-state">{snapshot.voiceState || "Idle"}</span>
         <Waveform className="voice-live-wave" weight="light" aria-hidden="true" />
       </header>
 
-      <div className="voice-line is-user">
-        <User weight="light" aria-hidden="true" />
-        <span>{snapshot.transcript || (snapshot.phase === "connecting" ? "正在连接麦克风…" : snapshot.phase === "listening" ? "请说话，我在听。" : "等待你的声音…")}</span>
+      <div className="voice-caption-list" aria-live="polite" data-testid="voice-caption-list">
+        {turns.length === 0 && (
+          <div className="voice-caption-empty">
+            <User weight="light" aria-hidden="true" />
+            <span>{snapshot.transcript || (snapshot.phase === "connecting" ? "正在连接麦克风…" : "请说话，我在听。")}</span>
+          </div>
+        )}
+        {turns.map((turn) => (
+          <div className={`voice-caption-turn is-${turn.status}`} key={turn.turnId} data-turn-id={turn.turnId}>
+            <User weight="light" aria-hidden="true" />
+            <div>
+              <small>{turn.turnId}</small>
+              {turn.transcriptFinal
+                ? <span className="voice-caption-final">{turn.transcriptFinal}</span>
+                : turn.transcriptPartial
+                  ? <span className="voice-caption-partial">{turn.transcriptPartial}</span>
+                  : <span className="voice-caption-partial">正在识别…</span>}
+              {turn.status === "send_failed" && (
+                <span className="voice-caption-failure">
+                  发送失败，可重试
+                  <button type="button" onClick={() => onRetry?.(turn.turnId)}>重试</button>
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
       <div className="voice-line is-assistant">
         <ChatCircleDots weight="light" aria-hidden="true" />
-        <span>{snapshot.reply || (snapshot.phase === "thinking" ? "让我想一想…" : "罗照月的回答会显示在这里。")}</span>
+        <span>{assistantStatus || "罗照月的回答会显示在这里。"}</span>
       </div>
 
       {snapshot.error && <div className="conversation-error" role="status">{snapshot.error}</div>}
       <footer className="voice-popover-footer">
         <span><ArrowCounterClockwise weight="light" aria-hidden="true" />回复后继续倾听</span>
         <div>
-          <button type="button" className="voice-control-button" onClick={paused ? onResume : onPause} aria-label={paused ? "继续语音对话" : "暂停语音对话"}>
-            {paused ? <Play weight="fill" /> : <Pause weight="fill" />}
+          <button type="button" className="voice-control-button" onClick={recoverable ? onResume : onPause} aria-label={recoverable ? "继续语音对话" : "暂停语音对话"}>
+            {recoverable ? <Play weight="fill" /> : <Pause weight="fill" />}
           </button>
           <button type="button" className="voice-control-button is-end" onClick={onEnd} aria-label="结束语音对话"><X weight="bold" /></button>
         </div>

@@ -23,9 +23,10 @@ function toBase64(buffer) {
 }
 
 export class RealtimeScribe {
-  constructor({ token, deviceId, onPartial, onCommitted, onError, onStatus }) {
+  constructor({ token, deviceId, sourceStream = null, onPartial, onCommitted, onError, onStatus }) {
     this.token = token;
     this.deviceId = deviceId;
+    this.sourceStream = sourceStream;
     this.onPartial = onPartial;
     this.onCommitted = onCommitted;
     this.onError = onError;
@@ -35,14 +36,14 @@ export class RealtimeScribe {
   async start() {
     try {
       this.onStatus?.("requesting");
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          ...(this.deviceId ? { deviceId: { exact: this.deviceId } } : {}),
-          echoCancellation: true,
-          noiseSuppression: true,
-          channelCount: 1,
-        },
-      });
+      this.stream = this.sourceStream || await navigator.mediaDevices.getUserMedia({
+          audio: {
+            ...(this.deviceId ? { deviceId: { exact: this.deviceId } } : {}),
+            echoCancellation: true,
+            noiseSuppression: true,
+            channelCount: 1,
+          },
+        });
       this.onStatus?.("connecting");
       const url = new URL("wss://api.elevenlabs.io/v1/speech-to-text/realtime");
       url.searchParams.set("model_id", SCRIBE_MODEL_ID);
@@ -70,7 +71,7 @@ export class RealtimeScribe {
       };
 
       this.audioContext = new AudioContext();
-      const source = this.audioContext.createMediaStreamSource(this.stream);
+      this.source = this.audioContext.createMediaStreamSource(this.stream);
       this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
       this.processor.onaudioprocess = (event) => {
         if (this.socket?.readyState !== WebSocket.OPEN) return;
@@ -80,7 +81,7 @@ export class RealtimeScribe {
           audio_base_64: toBase64(pcm.buffer),
         }));
       };
-      source.connect(this.processor);
+      this.source.connect(this.processor);
       this.processor.connect(this.audioContext.destination);
     } catch (error) {
       this.stop();
@@ -88,15 +89,21 @@ export class RealtimeScribe {
     }
   }
 
+  setMuted(muted) {
+    this.stream?.getAudioTracks?.().forEach((track) => { track.enabled = !muted; });
+  }
+
   stop() {
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.socket.send(JSON.stringify({ message_type: "input_audio_chunk", audio_base_64: "", commit: true }));
     }
     this.socket?.close();
+    this.source?.disconnect();
     this.processor?.disconnect();
     this.audioContext?.close();
     this.stream?.getTracks().forEach((track) => track.stop());
     this.socket = null;
+    this.source = null;
     this.processor = null;
     this.audioContext = null;
     this.stream = null;

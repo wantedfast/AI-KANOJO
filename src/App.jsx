@@ -470,7 +470,7 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
       conversation.startVoice?.(settings.microphoneId);
       return;
     }
-    if (conversationSnapshot.phase === "paused") conversation.resumeVoice?.();
+    if (["paused", "error", "idle"].includes(conversationSnapshot.phase)) conversation.resumeVoice?.();
     else conversation.pauseVoice?.();
   };
   const endVoiceConversation = () => {
@@ -478,7 +478,9 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
     setConversationSurface("none");
   };
 
-  const conversationVisualPhase = conversationSnapshot.phase === "connecting" ? "listening" : conversationSnapshot.phase;
+  const conversationVisualPhase = ["connecting", "transcribing"].includes(conversationSnapshot.phase)
+    ? "listening"
+    : conversationSnapshot.phase === "sending" ? "thinking" : conversationSnapshot.phase;
   const supportedVisualState = ["idle", "listening", "thinking", "speaking", "completed", "error"].includes(conversationVisualPhase)
     ? conversationVisualPhase
     : "idle";
@@ -597,6 +599,7 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
             onPause={() => conversation.pauseVoice?.()}
             onResume={() => conversation.resumeVoice?.()}
             onEnd={endVoiceConversation}
+            onRetry={(turnId) => conversation.retryVoiceTurn?.(turnId)}
           />
         )}
 
