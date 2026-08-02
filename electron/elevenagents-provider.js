@@ -186,7 +186,7 @@ const buildConfiguredConversationConfig = (agent, modelId, voiceId) => {
     turn_eagerness: EXPECTED.turnEagerness,
     soft_timeout_config: {
       timeout_seconds: EXPECTED.softTimeoutSeconds,
-      message: "",
+      message: "Hmm...",
     },
   };
   config.conversation = {

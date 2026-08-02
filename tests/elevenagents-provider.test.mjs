@@ -19,7 +19,7 @@ const validAgent = (overrides = {}) => ({
     asr: { provider: "scribe_realtime" },
     turn: {
       turn_eagerness: "normal",
-      soft_timeout_config: { timeout_seconds: -1, message: "" },
+      soft_timeout_config: { timeout_seconds: -1, message: "Hmm..." },
     },
     tts: { model_id: "eleven_v3_conversational", voice_id: "voice_1234567890" },
     conversation: { client_events: ["audio", "interruption", "user_transcript"] },
@@ -116,7 +116,7 @@ describe("ElevenAgents provider", () => {
     expect(body.conversation_config.agent.language).toBe("zh");
     expect(Object.keys(body.conversation_config.language_presets).sort()).toEqual(["en", "ja"]);
     expect(body.conversation_config.tts).toMatchObject({ model_id: "eleven_v3_conversational", stability: 0.42 });
-    expect(body.conversation_config.turn.soft_timeout_config).toEqual({ timeout_seconds: -1, message: "" });
+    expect(body.conversation_config.turn.soft_timeout_config).toEqual({ timeout_seconds: -1, message: "Hmm..." });
     expect(JSON.stringify(body)).not.toContain("secret");
   });
 
