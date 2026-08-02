@@ -11,10 +11,12 @@
     "desktop": "npm run build && node node_modules/electron/cli.js .",
     "test": "vitest run",
     "test:electron": "node tools/electron-smoke.mjs",
+    "test:elevenagents:live": "node node_modules/electron/cli.js tools/elevenagents-backend-smoke.mjs",
     "test:sites": "node --test tests/sites-worker.test.mjs",
     "verify": "node tests/verify.mjs"
   },
   "dependencies": {
+    "@elevenlabs/client": "1.17.0",
     "@phosphor-icons/react": "2.1.10",
     "@vitejs/plugin-react": "5.0.4",
     "electron": "43.2.0",

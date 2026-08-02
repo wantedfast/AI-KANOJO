@@ -6,11 +6,12 @@ export class JsonStore {
     this.directory = directory;
     this.file = path.join(directory, "state.json");
     this.data = {
-      settings: { demoMode: true, deepseekModel: "deepseek-v4-flash", voiceId: "", microphoneId: "" },
+      settings: { voiceId: "", microphoneId: "" },
       chat: [],
       window: null,
       locked: false,
       secrets: {},
+      elevenAgents: { agentId: "", verifiedAgentId: "", verifiedAt: 0, configVersion: "" },
     };
   }
 
@@ -21,8 +22,17 @@ export class JsonStore {
       this.data = {
         ...this.data,
         ...parsed,
-        settings: { ...this.data.settings, ...parsed.settings },
+        settings: {
+          voiceId: String(parsed.settings?.voiceId || "").trim().slice(0, 160),
+          microphoneId: String(parsed.settings?.microphoneId || "").trim().slice(0, 512),
+        },
         secrets: { ...this.data.secrets, ...parsed.secrets },
+        elevenAgents: {
+          agentId: String(parsed.elevenAgents?.agentId || "").trim().slice(0, 160),
+          verifiedAgentId: String(parsed.elevenAgents?.verifiedAgentId || "").trim().slice(0, 160),
+          verifiedAt: Math.max(0, Number(parsed.elevenAgents?.verifiedAt) || 0),
+          configVersion: String(parsed.elevenAgents?.configVersion || "").trim().slice(0, 80),
+        },
       };
     } catch (error) {
       if (error.code !== "ENOENT" && !(error instanceof SyntaxError)) throw error;

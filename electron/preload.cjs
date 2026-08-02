@@ -22,6 +22,12 @@ contextBridge.exposeInMainWorld("kanojo", {
   streamReply,
   synthesize: (payload) => ipcRenderer.invoke("eleven:synthesize", payload),
   cancelActive: () => ipcRenderer.invoke("providers:cancel"),
+  getConversationBackendStatus: () => ipcRenderer.invoke("conversation:backend-status"),
+  configureElevenAgent: (payload = {}) => ipcRenderer.invoke("conversation:configure-agent", payload),
+  validateElevenAgent: (payload = {}) => ipcRenderer.invoke("conversation:validate-agent", payload),
+  saveElevenAgentId: (payload) => ipcRenderer.invoke("conversation:save-agent-id", payload),
+  createConversationCredential: (payload) => ipcRenderer.invoke("conversation:create-credential", payload),
+  cancelConversationRequest: (payload) => ipcRenderer.invoke("conversation:cancel-request", payload),
   setLocked: (locked) => ipcRenderer.invoke("window:set-locked", locked),
   startWindowDrag: (point) => ipcRenderer.send("window:drag-start", point),
   moveWindowDrag: (point) => ipcRenderer.send("window:drag-move", point),
@@ -45,7 +51,7 @@ contextBridge.exposeInMainWorld("kanojo", {
 });
 
 window.addEventListener("DOMContentLoaded", () => {
-  const hitSelector = "button,input,select,form,.status-rail,.drag-surface:not(.is-locked),.glass-panel,.portrait-button,.utility-menu";
+  const hitSelector = "button,input,textarea,select,form,.conversation-panel,.status-rail,.drag-surface:not(.is-locked),.glass-panel,.portrait-button,.utility-menu";
   let frame = 0;
   const publishHitRegions = () => {
     frame = 0;

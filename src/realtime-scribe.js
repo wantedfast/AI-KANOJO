@@ -1,3 +1,5 @@
+import { SCRIBE_MODEL_ID } from "../shared/model-contracts.js";
+
 function downsampleToPcm16(input, inputRate, outputRate = 16000) {
   const ratio = inputRate / outputRate;
   const length = Math.floor(input.length / ratio);
@@ -43,7 +45,7 @@ export class RealtimeScribe {
       });
       this.onStatus?.("connecting");
       const url = new URL("wss://api.elevenlabs.io/v1/speech-to-text/realtime");
-      url.searchParams.set("model_id", "scribe_v2_realtime");
+      url.searchParams.set("model_id", SCRIBE_MODEL_ID);
       url.searchParams.set("audio_format", "pcm_16000");
       url.searchParams.set("commit_strategy", "vad");
       url.searchParams.set("vad_silence_threshold_secs", "1.2");

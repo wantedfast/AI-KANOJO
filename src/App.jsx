@@ -9,11 +9,13 @@ import {
 } from "@phosphor-icons/react";
 import { createCompanionController, STATE_META } from "./companion-controller.js";
 import { RealtimeScribe } from "./realtime-scribe.js";
+import { EMPTY_CONVERSATION_SNAPSHOT, resolveConversationAdapter } from "./conversation-adapter.js";
+import { TextChatPanel, VoiceConversationPopover } from "./conversation-surfaces.jsx";
 
 const api = window.kanojo ?? {
   isDesktop: false,
   getBootstrap: async () => ({
-    settings: { demoMode: true, deepseekModel: "deepseek-v4-flash", voiceId: "", microphoneId: "" },
+    settings: { demoMode: true, voiceId: "", microphoneId: "" },
     chat: [],
     credentials: { deepseek: false, elevenlabs: false },
     locked: false,
@@ -36,7 +38,6 @@ const api = window.kanojo ?? {
 
 const DEMO_PARTIAL = "今天也想和你聊";
 const DEMO_FINAL = "今天也想和你聊一会儿。";
-const PORTRAIT_SRC = "./avatar/outfits/front/02-modern-jk.png";
 
 function ServicePill({ ok, children }) {
   return <span className={`service-pill ${ok ? "is-ready" : "is-missing"}`}><i />{children}</span>;
@@ -76,13 +77,25 @@ function SleepIndicator() {
   );
 }
 
-export function App() {
+export function App({ runtimeApi = api, conversationAdapter, ScribeClient = RealtimeScribe, audioFactory = (url) => new Audio(url) } = {}) {
+  const api = runtimeApi;
   const controller = useMemo(() => createCompanionController(), []);
+  const [frontendPreviewMode, setFrontendPreviewMode] = useState(!api.isDesktop);
+  const conversation = useMemo(
+    () => resolveConversationAdapter({
+      isDesktop: api.isDesktop && !frontendPreviewMode,
+      injected: conversationAdapter,
+      runtimeApi: api,
+    }),
+    [api.isDesktop, conversationAdapter, frontendPreviewMode],
+  );
   const [snapshot, setSnapshot] = useState(controller.getSnapshot());
+  const [conversationSnapshot, setConversationSnapshot] = useState(() => conversation.getSnapshot?.() ?? EMPTY_CONVERSATION_SNAPSHOT);
+  const [conversationSurface, setConversationSurface] = useState("none");
   const [activeSession, setActiveSession] = useState(false);
   const [paused, setPaused] = useState(false);
   const [panel, setPanel] = useState("compact");
-  const [settings, setSettings] = useState({ demoMode: true, deepseekModel: "deepseek-v4-flash", voiceId: "", microphoneId: "" });
+  const [settings, setSettings] = useState({ demoMode: !api.isDesktop, voiceId: "", microphoneId: "" });
   const [credentials, setCredentials] = useState({ deepseek: false, elevenlabs: false });
   const [microphones, setMicrophones] = useState([]);
   const [networkOnline, setNetworkOnline] = useState(navigator.onLine);
@@ -97,8 +110,31 @@ export function App() {
   const audioRef = useRef(null);
   const featureNoticeTimer = useRef(null);
   const dragPointer = useRef(null);
+  const sessionActiveRef = useRef(false);
+  const pausedRef = useRef(false);
+  const conversationRunRef = useRef(0);
+  const listeningRunRef = useRef(0);
+  const continuousTimerRef = useRef(null);
 
   useEffect(() => controller.subscribe(setSnapshot), [controller]);
+
+  useEffect(() => {
+    const unsubscribe = conversation.subscribe(setConversationSnapshot);
+    return () => {
+      unsubscribe?.();
+      if (!conversationAdapter && conversation !== window.kanojoConversation) conversation.dispose?.();
+    };
+  }, [conversation, conversationAdapter]);
+
+  useEffect(() => {
+    const handleEscape = (event) => {
+      if (event.key !== "Escape" || conversationSurface === "none") return;
+      conversation.closeSurface?.(conversationSurface);
+      setConversationSurface("none");
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [conversation, conversationSurface]);
 
   const refreshMicrophones = async () => {
     if (!navigator.mediaDevices?.enumerateDevices) {
@@ -113,8 +149,11 @@ export function App() {
     let mounted = true;
     api.getBootstrap().then((data) => {
       if (!mounted) return;
-      setSettings((current) => ({ ...current, ...data.settings }));
+      setFrontendPreviewMode(!api.isDesktop || Boolean(data.smokeMode));
+      setSettings((current) => ({ ...current, ...data.settings, demoMode: !api.isDesktop || Boolean(data.smokeMode) }));
       setCredentials(data.credentials);
+      conversation.setBackendStatus?.(data.conversationBackend);
+      conversation.hydrate?.(data.chat);
       setLocked(Boolean(data.locked));
       controller.hydrate(data.chat);
     }).catch((error) => controller.fail(error.message));
@@ -135,15 +174,20 @@ export function App() {
       scribeRef.current?.stop();
       audioRef.current?.pause();
       clearTimeout(featureNoticeTimer.current);
+      clearTimeout(continuousTimerRef.current);
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
       navigator.mediaDevices?.removeEventListener?.("devicechange", handleDeviceChange);
     };
-  }, [controller]);
+  }, [controller, conversation]);
 
   useEffect(() => {
     if (panel === "settings") refreshMicrophones().catch(() => setMicrophones([]));
-  }, [panel]);
+    if (panel === "settings" && conversationSurface !== "none") {
+      conversation.closeSurface?.(conversationSurface);
+      setConversationSurface("none");
+    }
+  }, [conversation, conversationSurface, panel]);
 
   const clearDemoTimers = () => {
     demoTimers.current.forEach(clearTimeout);
@@ -153,32 +197,42 @@ export function App() {
   const playAudio = async (arrayBuffer) => {
     const blob = new Blob([arrayBuffer], { type: "audio/mpeg" });
     const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
+    const audio = audioFactory(url);
     audioRef.current = audio;
     await audio.play();
     await new Promise((resolve) => {
-      audio.onended = resolve;
-      audio.onerror = resolve;
+      let settled = false;
+      const settle = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      audio.onended = settle;
+      audio.onerror = settle;
+      audio.onpause = settle;
     });
     URL.revokeObjectURL(url);
     audioRef.current = null;
   };
 
   const runReply = async (text) => {
+    const runId = ++conversationRunRef.current;
     const userMessage = controller.commitUser(text);
     if (!userMessage) return;
     await api.saveChat(controller.getSnapshot().messages);
     if (settings.demoMode) {
       controller.beginThinking();
       const chunks = ["当然可以。", "我一直都在。", "今天过得怎么样？"];
+      const chunkDelays = [200, 1200, 2400];
       chunks.forEach((chunk, index) => {
         demoTimers.current.push(setTimeout(() => {
+          if (index === 0) controller.beginSpeaking();
           controller.appendReply(chunk);
           if (index === chunks.length - 1) {
             controller.finishReply();
             api.saveChat(controller.getSnapshot().messages);
           }
-        }, 520 + index * 420));
+        }, chunkDelays[index]));
       });
       return;
     }
@@ -186,16 +240,23 @@ export function App() {
       controller.beginThinking();
       await api.streamReply({
         messages: controller.getSnapshot().messages.map(({ role, content }) => ({ role, content })),
-        model: settings.deepseekModel,
       }, (delta) => controller.appendReply(delta));
-      controller.beginSpeaking();
+      if (runId !== conversationRunRef.current) return;
       const spokenText = controller.getSnapshot().draftReply;
+      if (!spokenText.trim()) throw new Error("DeepSeek 未返回可朗读的回复");
       const audio = await api.synthesize({ text: spokenText, voiceId: settings.voiceId });
+      if (runId !== conversationRunRef.current) return;
+      controller.beginSpeaking();
       await playAudio(audio);
+      if (runId !== conversationRunRef.current) return;
       controller.finishReply();
       await api.saveChat(controller.getSnapshot().messages);
+      clearTimeout(continuousTimerRef.current);
+      continuousTimerRef.current = setTimeout(() => {
+        if (sessionActiveRef.current && !pausedRef.current) beginListening();
+      }, 450);
     } catch (error) {
-      controller.fail(error.message);
+      if (runId === conversationRunRef.current && sessionActiveRef.current) controller.fail(error.message);
     }
   };
 
@@ -211,16 +272,20 @@ export function App() {
   };
 
   const startRealListening = async () => {
+    const listeningId = ++listeningRunRef.current;
     try {
       setPaused(false);
+      pausedRef.current = false;
       controller.startListening();
       const token = await api.getScribeToken();
-      const scribe = new RealtimeScribe({
+      if (listeningId !== listeningRunRef.current || !sessionActiveRef.current || pausedRef.current) return;
+      const scribe = new ScribeClient({
         token,
         deviceId: settings.microphoneId,
         onPartial: (text) => controller.setPartial(text),
         onCommitted: (text, id) => {
           if (!controller.acceptTranscript(id)) return;
+          listeningRunRef.current += 1;
           scribe.stop();
           scribeRef.current = null;
           runReply(text);
@@ -229,6 +294,7 @@ export function App() {
         onError: (message) => {
           scribe.stop();
           scribeRef.current = null;
+          if (listeningId !== listeningRunRef.current || !sessionActiveRef.current) return;
           setScribeStatus("error");
           controller.fail(message);
         },
@@ -238,6 +304,7 @@ export function App() {
     } catch (error) {
       scribeRef.current?.stop();
       scribeRef.current = null;
+      if (listeningId !== listeningRunRef.current || !sessionActiveRef.current || pausedRef.current) return;
       setScribeStatus("error");
       controller.fail(error.message);
     }
@@ -246,6 +313,13 @@ export function App() {
   const beginListening = () => settings.demoMode ? startDemoListening() : startRealListening();
 
   const wakeCompanion = () => {
+    if (api.isDesktop && !settings.demoMode && (!credentials.deepseek || !credentials.elevenlabs || !settings.voiceId.trim())) {
+      setPanel("settings");
+      setSaveNote("请先配置两项密钥和 ElevenLabs Voice ID");
+      return;
+    }
+    sessionActiveRef.current = true;
+    pausedRef.current = false;
     setActiveSession(true);
     setPanel("compact");
     beginListening();
@@ -254,26 +328,44 @@ export function App() {
   const toggleListening = () => {
     if (snapshot.state === "listening" && !paused) {
       clearDemoTimers();
+      listeningRunRef.current += 1;
+      api.cancelActive?.();
       scribeRef.current?.stop();
       scribeRef.current = null;
       controller.stopListening();
+      pausedRef.current = true;
       setPaused(true);
       return;
     }
-    if (["idle", "completed"].includes(snapshot.state) || paused) beginListening();
+    if (["idle", "completed"].includes(snapshot.state) || paused) {
+      sessionActiveRef.current = true;
+      pausedRef.current = false;
+      beginListening();
+    }
   };
 
   const stopSpeaking = () => {
     clearDemoTimers();
+    clearTimeout(continuousTimerRef.current);
+    conversationRunRef.current += 1;
+    listeningRunRef.current += 1;
     api.cancelActive?.();
     audioRef.current?.pause();
     audioRef.current = null;
     controller.interrupt();
     api.saveChat(controller.getSnapshot().messages);
+    continuousTimerRef.current = setTimeout(() => {
+      if (sessionActiveRef.current && !pausedRef.current) beginListening();
+    }, 0);
   };
 
   const endSession = () => {
     clearDemoTimers();
+    clearTimeout(continuousTimerRef.current);
+    conversationRunRef.current += 1;
+    listeningRunRef.current += 1;
+    sessionActiveRef.current = false;
+    pausedRef.current = false;
     api.cancelActive?.();
     audioRef.current?.pause();
     audioRef.current = null;
@@ -286,6 +378,11 @@ export function App() {
 
   useEffect(() => api.onAudioStop?.(() => {
     clearDemoTimers();
+    clearTimeout(continuousTimerRef.current);
+    conversationRunRef.current += 1;
+    listeningRunRef.current += 1;
+    pausedRef.current = false;
+    setPaused(false);
     api.cancelActive?.();
     audioRef.current?.pause();
     audioRef.current = null;
@@ -295,17 +392,25 @@ export function App() {
       controller.interrupt();
       api.saveChat(controller.getSnapshot().messages);
     }
-  }), [controller]);
+    if (conversationSurface === "voice") conversation.resumeVoice?.();
+  }), [api, controller, conversation, conversationSurface]);
 
   const savePreferences = async () => {
-    const next = await api.saveSettings(settings);
-    setSettings(next);
-    if (keys.deepseek || keys.elevenlabs) {
-      const status = await api.saveCredentials(keys);
-      setCredentials(status);
-      setKeys({ deepseek: "", elevenlabs: "" });
+    try {
+      const next = await api.saveSettings(settings);
+      setSettings((current) => ({ ...current, ...next, demoMode: !api.isDesktop }));
+      let status = credentials;
+      if (keys.deepseek || keys.elevenlabs) {
+        status = await api.saveCredentials(keys);
+        setCredentials(status);
+        setKeys({ deepseek: "", elevenlabs: "" });
+      }
+      const ready = !api.isDesktop || (status.deepseek && status.elevenlabs && next.voiceId);
+      setSaveNote(ready ? "已安全保存，可以开始对话" : "仍需填写缺失的配置");
+      if (ready) setTimeout(() => setPanel("compact"), 700);
+    } catch (error) {
+      setSaveNote(error.message || "保存失败");
     }
-    setSaveNote("已安全保存");
     setTimeout(() => setSaveNote(""), 1800);
   };
 
@@ -344,36 +449,62 @@ export function App() {
   };
 
   const handleSingRequest = () => showFeatureNotice("唱歌功能准备中");
-  const handleChatRequest = () => showFeatureNotice("聊天功能准备中");
+  const closeConversationSurface = () => {
+    conversation.closeSurface?.(conversationSurface);
+    setConversationSurface("none");
+  };
+  const handleChatRequest = () => {
+    if (conversationSurface === "chat") {
+      closeConversationSurface();
+      return;
+    }
+    if (conversationSurface === "voice") conversation.endVoice?.();
+    setPanel("compact");
+    setConversationSurface("chat");
+  };
+  const handleVoiceRequest = () => {
+    setPanel("compact");
+    if (conversationSurface !== "voice") {
+      conversation.closeSurface?.(conversationSurface);
+      setConversationSurface("voice");
+      conversation.startVoice?.(settings.microphoneId);
+      return;
+    }
+    if (conversationSnapshot.phase === "paused") conversation.resumeVoice?.();
+    else conversation.pauseVoice?.();
+  };
+  const endVoiceConversation = () => {
+    conversation.endVoice?.();
+    setConversationSurface("none");
+  };
 
-  const meta = STATE_META[snapshot.state];
-  const codexWorking = activeSession && ["thinking", "speaking"].includes(snapshot.state);
-  const showPortrait = activeSession && snapshot.state !== "idle" && !minimized;
+  const conversationVisualPhase = conversationSnapshot.phase === "connecting" ? "listening" : conversationSnapshot.phase;
+  const supportedVisualState = ["idle", "listening", "thinking", "speaking", "completed", "error"].includes(conversationVisualPhase)
+    ? conversationVisualPhase
+    : "idle";
+  const visualState = conversationSurface === "none"
+    ? "idle"
+    : conversationSnapshot.phase === "paused"
+      ? "idle"
+      : supportedVisualState === "idle" ? "completed" : supportedVisualState;
+  const meta = STATE_META[visualState];
+  const displayActiveSession = conversationSurface !== "none";
+  const visibleNotice = featureNotice;
+  const codexWorking = displayActiveSession && ["thinking", "speaking"].includes(visualState);
   return (
-    <main className={`desktop-stage state-${snapshot.state} ${activeSession ? "is-awake" : "is-asleep"} ${minimized ? "is-minimized" : ""} ${panel === "settings" ? "has-settings" : ""} ${api.isDesktop ? "is-desktop-runtime" : "is-browser-preview"}`}>
+    <main className={`desktop-stage state-${visualState} ${displayActiveSession ? "is-awake" : "is-asleep"} ${minimized ? "is-minimized" : ""} ${panel === "settings" ? "has-settings" : ""} ${api.isDesktop ? "is-desktop-runtime" : "is-browser-preview"}`}>
       <section className="companion-shell" aria-label="AI-KANOJO 桌面女友">
-        {showPortrait && (
-          <button
-            className="portrait-button"
-            type="button"
-            onClick={snapshot.state === "speaking" ? stopSpeaking : undefined}
-            aria-label={snapshot.state === "speaking" ? "停止照月说话" : "罗照月半身立绘"}
-          >
-            <img src={PORTRAIT_SRC} alt="罗照月，现代 JK 半身立绘" draggable="false" />
-          </button>
-        )}
-
         {minimized && (
           <button
             className={`avatar-button animation-${meta.animation}`}
             style={{ "--seat-anchor-y": meta.seatAnchor, "--seat-bottom": `${(meta.seatAnchor - 1) * 150}px` }}
             type="button"
-            onClick={activeSession ? toggleListening : wakeCompanion}
-            aria-label={activeSession ? `${meta.label}角色，点击切换聆听` : "唤醒照月角色"}
+            onClick={() => { setMinimized(false); handleVoiceRequest(); }}
+            aria-label="展开并开始语音对话"
           >
             <img src={meta.src} alt={`8-bit 罗照月，${meta.label}`} draggable="false" />
             <span className="avatar-halo" />
-            {snapshot.state === "idle" && <SleepIndicator />}
+            {visualState === "idle" && <SleepIndicator />}
             {!activeSession && <span className="wake-hint">唤醒照月</span>}
           </button>
         )}
@@ -392,7 +523,7 @@ export function App() {
           </span>
           {minimized ? (
             <div className="mini-rail" aria-label="已缩小悬浮窗">
-              <span className={`mini-status state-${snapshot.state}`} aria-hidden="true" />
+              <span className={`mini-status state-${visualState}`} aria-hidden="true" />
               <button type="button" className="round-button restore-button" onClick={() => setMinimized(false)} aria-label="展开悬浮窗"><ArrowsOutSimple weight="bold" /></button>
             </div>
           ) : (<>
@@ -400,10 +531,10 @@ export function App() {
             <div className="icon-feature-group" aria-label="快捷功能">
               <IconFeatureButton
                 id="companion"
-                className={`state-${snapshot.state}`}
-                onClick={activeSession ? toggleListening : wakeCompanion}
+                className={`state-${visualState}`}
+                onClick={handleVoiceRequest}
                 icon={<Microphone weight="light" />}
-                label={activeSession ? `${meta.label}，点击切换聆听` : "唤醒照月"}
+                label={conversationSurface === "voice" ? `${meta.label}，点击暂停或继续` : "开始简短语音对话"}
               />
               <IconFeatureButton
                 id="sing"
@@ -415,7 +546,7 @@ export function App() {
                 id="chat"
                 onClick={handleChatRequest}
                 icon={<ChatCircleDots weight="light" />}
-                label="聊天，功能准备中"
+                label={conversationSurface === "chat" ? "关闭文字聊天" : "打开文字聊天"}
               />
             </div>
 
@@ -425,12 +556,12 @@ export function App() {
                   className={`avatar-button runtime-avatar-button animation-${meta.animation}`}
                   style={{ "--seat-anchor-y": meta.seatAnchor, "--seat-bottom": `${(meta.seatAnchor - 1) * 160}px` }}
                   type="button"
-                  onClick={activeSession ? toggleListening : wakeCompanion}
-                  aria-label={activeSession ? `${meta.label}角色，点击切换聆听` : "唤醒照月角色"}
+                  onClick={handleVoiceRequest}
+                  aria-label={`${meta.label}角色，点击开始或切换语音对话`}
                 >
                   <img src={meta.src} alt={`8-bit 罗照月，${meta.label}`} draggable="false" />
                   <span className="avatar-halo" />
-                  {snapshot.state === "idle" && <SleepIndicator />}
+                  {visualState === "idle" && <SleepIndicator />}
                 </button>
               </div>
             )}
@@ -442,15 +573,32 @@ export function App() {
               <button type="button" className="traffic-light traffic-light-close" data-no-window-drag data-tooltip="关闭程序" title="关闭程序" onClick={() => api.quitApp?.()} aria-label="关闭程序">
                 <span aria-hidden="true" />
               </button>
-              <button type="button" className="traffic-light traffic-light-minimize" data-no-window-drag data-tooltip="缩小悬浮窗" title="缩小悬浮窗" onClick={() => { setPanel("compact"); setMinimized(true); }} aria-label="缩小悬浮窗">
+              <button type="button" className="traffic-light traffic-light-minimize" data-no-window-drag data-tooltip="缩小悬浮窗" title="缩小悬浮窗" onClick={() => { closeConversationSurface(); setPanel("compact"); setMinimized(true); }} aria-label="缩小悬浮窗">
                 <span aria-hidden="true" />
               </button>
             </div>
           </div>
 
-          {featureNotice && <div className="feature-notice" role="status">{featureNotice}</div>}
+          {visibleNotice && <div className="feature-notice" role="status">{visibleNotice}</div>}
           </>)}
         </div>
+
+        {!minimized && panel !== "settings" && conversationSurface === "chat" && (
+          <TextChatPanel
+            snapshot={conversationSnapshot}
+            onClose={closeConversationSurface}
+            onSend={(message) => conversation.sendText?.(message) !== false}
+          />
+        )}
+
+        {!minimized && panel !== "settings" && conversationSurface === "voice" && (
+          <VoiceConversationPopover
+            snapshot={conversationSnapshot}
+            onPause={() => conversation.pauseVoice?.()}
+            onResume={() => conversation.resumeVoice?.()}
+            onEnd={endVoiceConversation}
+          />
+        )}
 
         {panel === "settings" && (
           <section className="glass-panel settings-panel" aria-label="设置与诊断">
@@ -460,11 +608,7 @@ export function App() {
             </header>
 
             <div className="settings-grid">
-              <label className="toggle-row">
-                <span><strong>演示模式</strong><small>无需凭据，体验完整状态流</small></span>
-                <input type="checkbox" checked={settings.demoMode} onChange={(event) => setSettings({ ...settings, demoMode: event.target.checked })} />
-              </label>
-              <label><span>DeepSeek 模型</span><select value={settings.deepseekModel} onChange={(event) => setSettings({ ...settings, deepseekModel: event.target.value })}><option value="deepseek-v4-flash">DeepSeek V4 Flash</option><option value="deepseek-v4-pro">DeepSeek V4 Pro</option></select></label>
+              <label><span>固定模型</span><input value="文字 DeepSeek V4 Flash · 语音 Qwen3.6 / Scribe v2 / Eleven v3 Conversational" readOnly /></label>
               <label><span>DeepSeek API Key</span><input type="password" value={keys.deepseek} onChange={(event) => setKeys({ ...keys, deepseek: event.target.value })} placeholder={credentials.deepseek ? "已保存在系统保护区" : "sk-…"} autoComplete="off" /></label>
               <label><span>ElevenLabs API Key</span><input type="password" value={keys.elevenlabs} onChange={(event) => setKeys({ ...keys, elevenlabs: event.target.value })} placeholder={credentials.elevenlabs ? "已保存在系统保护区" : "xi-…"} autoComplete="off" /></label>
               <label><span>ElevenLabs Voice ID</span><input value={settings.voiceId} onChange={(event) => setSettings({ ...settings, voiceId: event.target.value })} placeholder="正式语音所需" /></label>

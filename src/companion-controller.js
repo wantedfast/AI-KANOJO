@@ -68,7 +68,6 @@ export function createCompanionController({ completedDelay = 5000 } = {}) {
     },
     appendReply(delta) {
       if (!delta) return;
-      if (snapshot.state === "thinking") setState("speaking");
       emit({ draftReply: snapshot.draftReply + delta });
     },
     beginSpeaking() {

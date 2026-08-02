@@ -4,28 +4,39 @@ import { spawn } from "node:child_process";
 
 const root = path.resolve(".");
 const outputDirectory = path.join(root, "design-qa");
-const reportPath = path.join(outputDirectory, "electron-smoke.json");
-const restoreReportPath = path.join(outputDirectory, "electron-restore-smoke.json");
+const smokeRunId = `${process.pid}-${Date.now()}`;
+const smokeWorkspacePath = path.join(outputDirectory, "electron-smoke-user-data", smokeRunId);
+const reportPath = path.join(smokeWorkspacePath, "electron-smoke.json");
+const restoreReportPath = path.join(smokeWorkspacePath, "electron-restore-smoke.json");
 const executable = path.join(root, "node_modules", "electron", "dist", process.platform === "win32" ? "electron.exe" : "electron");
-await mkdir(outputDirectory, { recursive: true });
-await rm(path.join(outputDirectory, "electron-smoke-user-data"), { recursive: true, force: true });
+await mkdir(smokeWorkspacePath, { recursive: true });
+await rm(reportPath, { force: true });
+await rm(restoreReportPath, { force: true });
 
 let duplicateProbe;
 const code = await new Promise((resolve, reject) => {
   const child = spawn(executable, [root], {
     cwd: root,
-    env: { ...process.env, AI_KANOJO_SMOKE_REPORT: reportPath },
+    env: { ...process.env, AI_KANOJO_SMOKE_REPORT: reportPath, AI_KANOJO_SMOKE_WORKSPACE: smokeWorkspacePath },
     stdio: ["ignore", "inherit", "inherit"],
   });
   const timeout = setTimeout(() => {
     child.kill();
     reject(new Error("Electron smoke test timed out"));
-  }, 20000);
-  setTimeout(() => {
-    duplicateProbe = new Promise((probeResolve, probeReject) => {
+  }, 35000);
+  duplicateProbe = (async () => {
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      try {
+        await readFile(reportPath, "utf8");
+        break;
+      } catch {
+        await new Promise((readyResolve) => setTimeout(readyResolve, 50));
+      }
+    }
+    return new Promise((probeResolve, probeReject) => {
       const duplicate = spawn(executable, [root], {
         cwd: root,
-        env: { ...process.env, AI_KANOJO_DUPLICATE_PROBE: reportPath },
+        env: { ...process.env, AI_KANOJO_DUPLICATE_PROBE: reportPath, AI_KANOJO_SMOKE_WORKSPACE: smokeWorkspacePath },
         stdio: ["ignore", "inherit", "inherit"],
       });
       const duplicateTimeout = setTimeout(() => {
@@ -38,7 +49,7 @@ const code = await new Promise((resolve, reject) => {
         probeResolve(exitCode);
       });
     });
-  }, 700);
+  })();
   child.on("error", reject);
   child.on("exit", (exitCode) => {
     clearTimeout(timeout);
@@ -90,6 +101,9 @@ if (
   || report.renderer.windowControls.closeTitle !== "关闭程序"
   || report.renderer.windowControls.minimizeTitle !== "缩小悬浮窗"
   || !report.renderer.windowControls.hitTracked
+  || !report.renderer.textChatInput?.present
+  || !report.renderer.textChatInput.panelPresent
+  || !report.renderer.textChatInput.hitTracked
   || !report.renderer.minimizeToggle?.restoreVisible
   || Math.abs(report.renderer.minimizeToggle.compactWidth - 160) > 1
   || report.renderer.minimizeToggle.compactHeight > 50
@@ -102,13 +116,13 @@ if (
 const restoreCode = await new Promise((resolve, reject) => {
   const child = spawn(executable, [root], {
     cwd: root,
-    env: { ...process.env, AI_KANOJO_RESTORE_REPORT: restoreReportPath },
+    env: { ...process.env, AI_KANOJO_RESTORE_REPORT: restoreReportPath, AI_KANOJO_SMOKE_WORKSPACE: smokeWorkspacePath },
     stdio: ["ignore", "inherit", "inherit"],
   });
   const timeout = setTimeout(() => {
     child.kill();
     reject(new Error("Electron restore smoke test timed out"));
-  }, 12000);
+  }, 20000);
   child.on("error", reject);
   child.on("exit", (exitCode) => {
     clearTimeout(timeout);

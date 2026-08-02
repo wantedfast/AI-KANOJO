@@ -12,6 +12,8 @@ describe("companion controller", () => {
     controller.commitUser("你好");
     expect(controller.getSnapshot().state).toBe("thinking");
     controller.appendReply("我在");
+    expect(controller.getSnapshot().state).toBe("thinking");
+    controller.beginSpeaking();
     expect(controller.getSnapshot().state).toBe("speaking");
     controller.finishReply();
     expect(controller.getSnapshot().state).toBe("completed");

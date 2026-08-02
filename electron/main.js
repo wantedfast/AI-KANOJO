@@ -4,17 +4,22 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { JsonStore } from "./store.js";
 import { createScribeToken, streamDeepSeek, synthesizeElevenV3 } from "./providers.js";
+import { importDesktopCredentials } from "./credential-import.js";
+import { ElevenAgentsService } from "./elevenagents-service.js";
+import { toSafeElevenAgentsError } from "../shared/elevenagents-contracts.js";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(directory, "..");
 const smokeReportPath = process.env.AI_KANOJO_SMOKE_REPORT;
 const restoreReportPath = process.env.AI_KANOJO_RESTORE_REPORT;
 const duplicateProbePath = process.env.AI_KANOJO_DUPLICATE_PROBE;
+const smokeWorkspacePath = process.env.AI_KANOJO_SMOKE_WORKSPACE;
 if (smokeReportPath || restoreReportPath || duplicateProbePath) {
-  app.setPath("userData", path.join(path.dirname(smokeReportPath || restoreReportPath || duplicateProbePath), "electron-smoke-user-data"));
+  app.setPath("userData", smokeWorkspacePath || path.join(path.dirname(smokeReportPath || restoreReportPath || duplicateProbePath), "electron-smoke-user-data"));
 }
 const ownsSingleInstance = app.requestSingleInstanceLock();
-if (!ownsSingleInstance) app.quit();
+if (duplicateProbePath) process.exit(ownsSingleInstance ? 2 : 0);
+else if (!ownsSingleInstance) app.quit();
 let window;
 let tray;
 let store;
@@ -27,6 +32,15 @@ let dragSession = null;
 let dragPollTimer;
 let nativeMoveActive = false;
 let nativeMoveEndTimer;
+let elevenAgentsService;
+
+const safeElevenAgentsCall = async (operation) => {
+  try {
+    return { ok: true, value: await operation() };
+  } catch (error) {
+    return { ok: false, error: toSafeElevenAgentsError(error) };
+  }
+};
 
 const pointInside = (point, rect) => point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height;
 
@@ -200,12 +214,12 @@ function installIpc() {
       chat: data.chat,
       locked: data.locked,
       credentials: credentialStatus(),
+      smokeMode: Boolean(smokeReportPath),
+      conversationBackend: elevenAgentsService.getStatus(),
     };
   });
   ipcMain.handle("settings:save", async (_event, settings) => {
     const sanitized = {
-      demoMode: Boolean(settings.demoMode),
-      deepseekModel: ["deepseek-v4-flash", "deepseek-v4-pro"].includes(settings.deepseekModel) ? settings.deepseekModel : "deepseek-v4-flash",
       voiceId: String(settings.voiceId || "").trim().slice(0, 160),
       microphoneId: String(settings.microphoneId || "").trim().slice(0, 512),
     };
@@ -237,12 +251,11 @@ function installIpc() {
     activeRequest = new AbortController();
     return createScribeToken(decrypt("elevenlabs"), activeRequest.signal);
   });
-  ipcMain.handle("chat:stream", async (event, { requestId, messages, model }) => {
+  ipcMain.handle("chat:stream", async (event, { requestId, messages }) => {
     activeRequest?.abort();
     activeRequest = new AbortController();
     return streamDeepSeek({
       apiKey: decrypt("deepseek"),
-      model,
       messages,
       signal: activeRequest.signal,
       onDelta: (delta) => event.sender.send(`chat:delta:${requestId}`, delta),
@@ -263,6 +276,17 @@ function installIpc() {
     activeRequest = null;
     return true;
   });
+  ipcMain.handle("conversation:backend-status", () => elevenAgentsService.getStatus());
+  ipcMain.handle("conversation:configure-agent", (_event, payload = {}) => safeElevenAgentsCall(() => elevenAgentsService.configureAgent({
+    agentId: payload.agentId,
+    signal: AbortSignal.timeout(20_000),
+  })));
+  ipcMain.handle("conversation:validate-agent", (_event, payload = {}) => safeElevenAgentsCall(() => elevenAgentsService.validate({ agentId: payload.agentId })));
+  ipcMain.handle("conversation:save-agent-id", (_event, payload = {}) => safeElevenAgentsCall(() => elevenAgentsService.saveAgentId({ agentId: payload.agentId })));
+  ipcMain.handle("conversation:create-credential", (_event, payload = {}) => safeElevenAgentsCall(() => elevenAgentsService.createCredential({
+    requestId: payload.requestId,
+  })));
+  ipcMain.handle("conversation:cancel-request", (_event, payload = {}) => safeElevenAgentsCall(() => elevenAgentsService.cancel({ requestId: payload.requestId })));
   ipcMain.handle("window:set-locked", async (_event, locked) => {
     if (locked) await endWindowDrag();
     await store.patch({ locked: Boolean(locked) });
@@ -282,6 +306,7 @@ function installIpc() {
 
 async function runSmokeCheck(reportPath) {
   const smokeDirectory = path.dirname(reportPath);
+  const smokeImagePath = (name) => path.join(app.getPath("userData"), `${name}.png`);
   await window.webContents.executeJavaScript(`Promise.all(Array.from(document.images).map((image) => image.complete ? true : image.decode().catch(() => false)))`, true);
   const initial = window.getBounds();
   const display = screen.getDisplayMatching(initial);
@@ -332,7 +357,7 @@ async function runSmokeCheck(reportPath) {
   await new Promise((resolve) => setTimeout(resolve, 80));
   const moved = window.getBounds();
   const persistedAfterDrag = store.get().window;
-  await writeFile(path.join(smokeDirectory, "electron-idle.png"), (await window.webContents.capturePage()).toPNG());
+  await writeFile(smokeImagePath("electron-idle"), (await window.webContents.capturePage()).toPNG());
   const renderer = await window.webContents.executeJavaScript(`
     (async () => {
       const avatar = document.querySelector(".avatar-button");
@@ -373,13 +398,13 @@ async function runSmokeCheck(reportPath) {
       };
     })()
   `, true);
-  await writeFile(path.join(smokeDirectory, "electron-awake.png"), (await window.webContents.capturePage()).toPNG());
+  await writeFile(smokeImagePath("electron-awake"), (await window.webContents.capturePage()).toPNG());
   for (let attempt = 0; attempt < 50; attempt += 1) {
     renderer.beforeExternalStop = await window.webContents.executeJavaScript('document.querySelector(".state-speaking") !== null', true);
     if (renderer.beforeExternalStop) break;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  await writeFile(path.join(smokeDirectory, "electron-working.png"), (await window.webContents.capturePage()).toPNG());
+  await writeFile(smokeImagePath("electron-working"), (await window.webContents.capturePage()).toPNG());
   window.webContents.send("audio:stop");
   await new Promise((resolve) => setTimeout(resolve, 80));
   renderer.afterExternalStop = await window.webContents.executeJavaScript('document.querySelector(".state-listening") !== null', true);
@@ -439,7 +464,34 @@ async function runSmokeCheck(reportPath) {
       await new Promise((resolve) => setTimeout(resolve, 30));
     }
   }
-  await writeFile(path.join(smokeDirectory, "electron-menu.png"), (await window.webContents.capturePage()).toPNG());
+  renderer.textChatInput = await window.webContents.executeJavaScript(`
+    (async () => {
+      document.querySelector('[aria-label="打开文字聊天"]')?.click();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      const input = document.querySelector('[aria-label="输入聊天消息"]');
+      const panel = input?.closest('.conversation-panel');
+      const rect = input?.getBoundingClientRect();
+      return {
+        present: Boolean(input),
+        panelPresent: Boolean(panel),
+        rect: rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null,
+      };
+    })()
+  `, true);
+  if (renderer.textChatInput.rect) {
+    const inputCenter = {
+      x: renderer.textChatInput.rect.x + renderer.textChatInput.rect.width / 2,
+      y: renderer.textChatInput.rect.y + renderer.textChatInput.rect.height / 2,
+    };
+    renderer.textChatInput.hitTracked = false;
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      renderer.textChatInput.hitTracked = hitRegions.some((region) => pointInside(inputCenter, region));
+      if (renderer.textChatInput.hitTracked) break;
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    }
+  }
+  await window.webContents.executeJavaScript(`document.querySelector('[aria-label="关闭文字聊天"]')?.click()`, true);
+  await writeFile(smokeImagePath("electron-menu"), (await window.webContents.capturePage()).toPNG());
   renderer.minimizeToggle = await window.webContents.executeJavaScript(`
     (async () => {
       document.querySelector('[aria-label="缩小悬浮窗"]')?.click();
@@ -460,7 +512,7 @@ async function runSmokeCheck(reportPath) {
     })()
   `, true);
   const image = await window.webContents.capturePage();
-  await writeFile(path.join(smokeDirectory, "electron-smoke.png"), image.toPNG());
+  await writeFile(smokeImagePath("electron-smoke"), image.toPNG());
   await writeFile(reportPath, `${JSON.stringify({
     window: {
       alwaysOnTop: window.isAlwaysOnTop(),
@@ -478,6 +530,9 @@ async function runSmokeCheck(reportPath) {
     },
     renderer,
   }, null, 2)}\n`, "utf8");
+  // Keep the smoke-test primary instance alive long enough for the
+  // single-instance probe to contend for the lock deterministically.
+  await new Promise((resolve) => setTimeout(resolve, 6000));
   app.quit();
 }
 
@@ -485,6 +540,18 @@ app.whenReady().then(async () => {
   if (!ownsSingleInstance) return;
   store = new JsonStore(app.getPath("userData"));
   await store.load();
+  elevenAgentsService = new ElevenAgentsService({ store, getApiKey: () => decrypt("elevenlabs") });
+  if (!smokeReportPath && !restoreReportPath && !duplicateProbePath) {
+    await importDesktopCredentials({
+      store,
+      safeStorage,
+      filePath: path.join(app.getPath("desktop"), "DS and ElevenLabs.txt"),
+    });
+    const data = store.get();
+    if (data.secrets?.elevenlabs && data.elevenAgents?.agentId && !elevenAgentsService.getStatus().configured) {
+      await safeElevenAgentsCall(() => elevenAgentsService.configureAgent({ signal: AbortSignal.timeout(20_000) }));
+    }
+  }
   installIpc();
   await createWindow();
   if (restoreReportPath) {
@@ -509,6 +576,7 @@ app.on("second-instance", () => {
 app.on("window-all-closed", (event) => event.preventDefault());
 app.on("before-quit", () => {
   activeRequest?.abort();
+  elevenAgentsService?.abortAll();
   dragSession = null;
   clearInterval(dragPollTimer);
   nativeMoveActive = false;

@@ -79,3 +79,34 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 - Keep the expanded rail at 500×88px and offset the Codex status 4px left; this is the compact limit that still preserves the active 8-bit slot without overlap.
 - Hide the 2D Modern JK portrait in every `idle`/sleep state, including idle reached after an active conversation; sleep shows only the 8-bit character.
 - Keep the window controls as a compact vertical pair at the rail's far-right edge: 12px red close above a yellow minimize dot, 8px visible spacing, 32×20px pointer hit areas, non-drag behavior, and hover labels/glyphs.
+
+## Highest-priority conversation UI override (v1.9 selected)
+
+- Remove the large 2D Modern JK portrait from every state and conversation surface. The 160px 8-bit Luo Zhaoyue avatar is the sole character representation for idle, voice, text chat, working, completed, and error states.
+- Keep voice and text chat as distinct entry points: the violet microphone starts a compact continuous voice conversation popover, while the pink chat button opens the portrait-side-style text conversation panel without the portrait.
+- Voice mode shows only one current user transcript, one Luo Zhaoyue reply, a single changing listening/thinking/speaking status, and compact pause/end actions. It collapses when the voice session ends.
+- Text chat may show recent history and a composer, but it must remain a lightweight desktop companion panel anchored to the capsule rather than becoming a full-screen messaging application.
+
+## Highest-priority capsule preservation override (v2.0 selected)
+
+- Do not change the existing capsule design while adding conversation UI. Preserve its current dimensions, geometry, colors, spacing, icon positions, 8-bit slot, Codex block, traffic-light controls, drag behavior, minimized state, and animations exactly as implemented.
+- New voice and text-chat surfaces must render outside and anchor to the existing capsule. They may expand the transparent Electron window bounds, but must not reflow, stretch, restyle, or add controls to the capsule itself.
+
+## Highest-priority frontend-only scope override (v2.1 selected)
+
+- This conversation UI pass is frontend-only. Work exclusively in the renderer UI and its frontend tests; do not modify provider integrations, credentials, safe storage, Electron main-process behavior, IPC implementation, model selection, audio transport, persistence, or any backend service.
+- Treat chat, transcript, voice phase, playback, history, configuration, and error data as an injected frontend contract supplied by the user's separate backend plan. Use fakes only for frontend preview and tests.
+- Render new panels inside the existing transparent renderer canvas. Do not resize or reposition the Electron window as part of this frontend pass.
+
+## Highest-priority conversation language override (v2.0 selected)
+
+- Conversation replies must follow the language of the user's current turn. Chinese input receives Chinese output, English input receives English output, and Japanese input receives Japanese output; these are the only supported conversation languages for the current validation scope.
+- A small number of foreign proper nouns or loanwords must not switch the whole response language. For deliberately mixed input, reply in the dominant language.
+- The simple conversation validation must use ElevenAgents as the real-time orchestration layer, with DeepSeek V4 Flash as the Custom LLM, Scribe v2 Realtime for transcription and Eleven v3 Conversational for speech.
+- The validation phase intentionally has no Luo Zhaoyue persona, girlfriend identity, relationship memory or character backstory. Language-following and concise spoken output remain baseline communication rules rather than persona.
+
+## Highest-priority backend-only validation override (v2.1 selected)
+
+- The current ElevenAgents validation task is backend-only because the frontend is being redesigned independently. Do not modify or constrain `src/` UI, button behavior, layout, animation or conversation presentation for this task.
+- Backend scope is limited to ElevenAgent configuration validation, secure Agent ID storage, short-lived conversation credential issuance, restricted preload/IPC contracts, error normalization and backend tests.
+- The future frontend will own microphone capture, WebRTC/WebSocket media session handling, audio playback and visual state rendering by consuming the backend's short-lived credential contract.

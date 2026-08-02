@@ -32,14 +32,16 @@ describe("flat spectrum feature rail", () => {
     expect(container.querySelector(".utility-menu-trigger")).not.toBeInTheDocument();
   });
 
-  it("keeps singing and chat as honest near-term entries", async () => {
+  it("keeps singing as a placeholder and opens text chat without starting voice", async () => {
     const { container } = render(<App />);
     await act(async () => Promise.resolve());
 
     fireEvent.click(container.querySelector(".feature-sing"));
     expect(screen.getByRole("status")).toHaveTextContent("唱歌功能准备中");
     fireEvent.click(container.querySelector(".feature-chat"));
-    expect(screen.getByRole("status")).toHaveTextContent("聊天功能准备中");
+    expect(screen.getByLabelText("与罗照月文字聊天")).toBeInTheDocument();
+    expect(screen.queryByLabelText("简短语音对话")).not.toBeInTheDocument();
+    expect(container.querySelector(".desktop-stage")).toHaveClass("state-completed", "is-awake");
   });
 
   it("collapses to the small draggable rail and restores", async () => {
@@ -82,17 +84,15 @@ describe("flat spectrum feature rail", () => {
     expect(screen.getByLabelText("Codex Working")).toHaveTextContent("Working");
   });
 
-  it("hides the 2D portrait whenever the companion returns to sleep", async () => {
-    vi.useFakeTimers();
+  it("never renders the retired 2D portrait in voice or text chat", async () => {
     const { container } = render(<App />);
     await act(async () => Promise.resolve());
 
     expect(container.querySelector(".portrait-button")).not.toBeInTheDocument();
     fireEvent.click(container.querySelector(".feature-companion"));
-    expect(container.querySelector(".portrait-button")).toBeInTheDocument();
-
-    await act(async () => vi.advanceTimersByTimeAsync(8000));
-    expect(container.querySelector(".desktop-stage")).toHaveClass("state-idle");
+    expect(container.querySelector(".portrait-button")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "结束语音对话" }));
+    fireEvent.click(container.querySelector(".feature-chat"));
     expect(container.querySelector(".portrait-button")).not.toBeInTheDocument();
   });
 });

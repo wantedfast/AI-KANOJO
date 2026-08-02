@@ -1,27 +1,53 @@
-# AI-KANOJO v1.8 Apple UI 审计整改 Design QA
+# AI-KANOJO conversation surfaces — design QA
 
-## 验收结论
+## Scope
 
-- 审计基线：`design-audit/apple-ui-2026-08-01/audit.md` 及其四张状态截图。
-- 实现证据：`design-qa/v18/01-idle.png`、`02-awake.png`、`03-working.png`、`04-minimized.png`。
-- 同画布对照：`design-qa/v18/compare-awake.png`、`compare-working.png`、`compare-minimized.png`；左右分别为整改前与整改后，视口均为 1280×720 CSS px。
-- Electron 实机证据：`design-qa/electron-idle.png`、`electron-awake.png`、`electron-working.png`；结构数据见 `design-qa/electron-smoke.json`。
+- Frontend-only text chat panel and compact voice conversation popover.
+- Existing capsule is a protected surface: its geometry, feature controls, 8-bit slot, Codex block, traffic lights, drag behavior, and minimized state were not redesigned.
+- The large 2D portrait is intentionally absent. The existing 160px 8-bit character remains the sole character representation.
 
-## 审计问题关闭情况
+## Visual sources
 
-1. [P1 fixed] 2D Modern JK 由 270px 缩至 220px，并移动到胶囊左缘形成约 15px 的视觉搭接；不再以独立大立绘抢占主焦点。
-2. [P1 fixed] Codex 活动态文案改为 `Working`，浏览器与 Electron 均完整显示，无截断。
-3. [P1 fixed] 缩小态宽度由 112px 调整为 160px，与所有运行状态 8-bit 角色的固定 160px 长边一致；唤醒、再次休眠和最小化均无尺寸跳变。
-4. [P2 fixed] 主胶囊改为低饱和石墨玻璃，削弱嵌套边框、图标光晕、Codex 阴影和流光峰值；窗口控制收敛为最右侧竖向红/黄双点。
-5. [P2 fixed] 2D 立绘、8-bit 状态、三个一级功能、Codex 状态以及关闭/缩小功能全部保留。
+- Text chat target: `C:\Users\wangf\.codex\generated_images\019fbd9d-2a05-7da2-9c82-7c0235152752\exec-4ccd7c2a-6b0c-4bde-a107-e6ef7735e038.png`
+- Voice target: `C:\Users\wangf\.codex\generated_images\019fbd9d-2a05-7da2-9c82-7c0235152752\exec-bb471696-a6de-410e-9913-c610c54d8e19.png`
+- Implemented text surface: `design-qa/frontend-chat-window.png`
+- Implemented voice states: `design-qa/electron-awake.png`, `design-qa/electron-working.png`
+- Voice comparison: `design-qa/conversation-voice-comparison.png`
+- Focused voice comparison: `design-qa/conversation-voice-focused-comparison.png`
 
-## 自动验证
+## Environment and states
 
-- `npm run verify`：13 项组件/服务/资产测试、Electron 拖动与位置恢复、4 项 Sites 测试全部通过。
-- Electron 向上拖动 64px 后保存为 `(184, -8)`，同一测试用户目录重启后恢复为 `(184, -8)`，误差 0px。
-- Electron 中 8-bit 长边为 160px；工作态角色与 Codex 几何相交为 `false`；缩小态为 160×44px，恢复后为 520px。
-- 窗口控制实测为竖向排列：可见圆点 12px、间距 8px、紧靠胶囊右边缘；红色关闭与黄色缩小均保持 pointer 光标、非拖动命中及悬停提示。
-- 展开态宽度收紧为 500px，Codex 左移 4px；保留 160px 运行角色槽位，并由 Electron 几何测试确认角色与 Codex 不相交。
-- 当前无未解决 P0、P1 或 P2 视觉问题。
+- Runtime: Electron transparent desktop window, 1040×620 CSS window; smoke captures are 1280×720 at the active Windows display scale.
+- Text state: formal desktop runtime without an injected backend adapter, showing the intentional unconfigured message.
+- Voice states: listening and speaking, driven by the controllable frontend preview adapter.
+- Browser navigation to the local preview was unavailable after the controlled in-app tab entered its browser error page; QA therefore used the product's actual Electron runtime and renderer tests.
+
+## Comparison review
+
+### Pass 1
+
+- P1 layout issue: the first voice popover anchor crossed the active 8-bit character slot.
+- Fix: moved the new surface farther left while keeping the capsule DOM and styles untouched.
+- P1 viewport issue: the text panel's fixed content row could clip its composer on a scaled Windows viewport.
+- Fix: constrained panel height to the available viewport and changed its body to a shrinking grid row, keeping the composer visible without resizing Electron.
+
+### Pass 2
+
+- Typography: compact system typography, restrained weights, and short conversational copy match the selected direction.
+- Layout: both surfaces sit outside and above/left of the capsule; the voice popover clears the 8-bit slot and Codex block.
+- Color and material: neutral graphite-blue glass, low-intensity violet/pink accents, thin cool borders, and restrained shadow match the target without introducing a game-HUD glow.
+- Assets: Phosphor icons are used for all new controls; no fake SVG, emoji, CSS art, or placeholder character asset was introduced.
+- Text chat: header, online status, recent history region, empty/error states, composer, Enter send, and Shift+Enter newline are implemented.
+- Voice: one live phase, one user transcript, one Luo Zhaoyue reply, continue-listening hint, pause/resume, and end controls are implemented.
+- Capsule preservation: Electron smoke evidence reports a 520px rail, a 160px avatar long edge, correct icon → avatar → Codex order, no avatar/Codex overlap, two vertical traffic-light controls, and a 160×44 minimized rail.
+- Accepted source difference: generated references include a decorative background, a different rail, and—in the text concept—a large portrait. Those elements are deliberately excluded because the user's frozen capsule and no-portrait decisions are authoritative.
+
+## Interaction and quality checks
+
+- Renderer tests: 36/36 passed, including text/voice mutual exclusion, injected phases, pause/resume/end, late-event handling, keyboard submission, visible errors, Escape close, no 2D portrait, and existing rail behavior.
+- Build: `npm run build` passed and produced the Sites-ready output.
+- Sites worker: `npm run test:sites` passed (4/4).
+- Electron: the complete visual/movement smoke passed before the latest CSS-only viewport constraint; a later rerun was blocked by a concurrently changed main-process single-instance startup path, outside this frontend-only scope. The renderer and production build remain green.
+- No renderer console error was observed in the successful Electron smoke/capture pass.
 
 final result: passed
