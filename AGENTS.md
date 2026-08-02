@@ -1,5 +1,12 @@
 # Prototype Instructions
 
+## Highest-priority continuous voice turn-taking override (v2.4 selected)
+
+- Give the user the full ElevenAgents-supported 30-second silence window before taking a turn. Keep `silence_end_call_timeout` and soft timeout disabled so silence never ends the session or emits filler speech.
+- Treat microphone/Scribe transcripts containing no Unicode letters or numbers (for example `...` or punctuation-only noise) as non-speech. They must not create a turn, reach the LLM, enter history, appear in CC, or trigger TTS.
+- A voice-mode Agent reply without a valid lexical user turn is unsolicited and must not enter history, CC, or playback.
+- Language detection remains a silent routing tool. Strip tool-call metadata such as `language_detection tool call: ...` before any assistant text reaches CC, history, or TTS.
+
 ## Highest-priority character asset management override (v2.3 selected)
 
 - The default conversation portrait is `public/avatar/outfits/front/02-modern-jk-conversation.png`: the half-body Modern JK pose with relaxed arms derived from the user's selected portrait reference. The previous full-body A-pose `02-modern-jk.png` remains an available source asset but is not the runtime default.

@@ -19,6 +19,8 @@ const validAgent = (overrides = {}) => ({
     asr: { provider: "scribe_realtime" },
     turn: {
       turn_eagerness: "normal",
+      turn_timeout: 30,
+      silence_end_call_timeout: -1,
       soft_timeout_config: { timeout_seconds: -1, message: "Hmm..." },
     },
     tts: { model_id: "eleven_v3_conversational", voice_id: "voice_1234567890" },
@@ -90,6 +92,8 @@ describe("ElevenAgents provider", () => {
       timeout_seconds: 3,
       message: "Are you still there?",
     };
+    existing.conversation_config.turn.turn_timeout = 7;
+    existing.conversation_config.turn.silence_end_call_timeout = 60;
     const published = validAgent({ name: existing.name });
     published.conversation_config.tts.stability = 0.42;
     const fetchImpl = vi.fn(async (url, options = {}) => {
@@ -116,6 +120,10 @@ describe("ElevenAgents provider", () => {
     expect(body.conversation_config.agent.language).toBe("zh");
     expect(Object.keys(body.conversation_config.language_presets).sort()).toEqual(["en", "ja"]);
     expect(body.conversation_config.tts).toMatchObject({ model_id: "eleven_v3_conversational", stability: 0.42 });
+    expect(body.conversation_config.turn).toMatchObject({
+      turn_timeout: 30,
+      silence_end_call_timeout: -1,
+    });
     expect(body.conversation_config.turn.soft_timeout_config).toEqual({ timeout_seconds: -1, message: "Hmm..." });
     expect(JSON.stringify(body)).not.toContain("secret");
   });
@@ -216,6 +224,17 @@ describe("ElevenAgents provider", () => {
     expect(result.issues).toContainEqual(expect.objectContaining({
       code: "TURN_CONFIG_MISMATCH",
       field: "conversation_config.turn.soft_timeout_config",
+    }));
+  });
+
+  it("rejects a short silence window that prompts before the user starts speaking", () => {
+    const agent = validAgent();
+    agent.conversation_config.turn.turn_timeout = 7;
+    const result = inspectElevenAgentConfig(agent);
+    expect(result.ok).toBe(false);
+    expect(result.issues).toContainEqual(expect.objectContaining({
+      code: "TURN_CONFIG_MISMATCH",
+      field: "conversation_config.turn.turn_timeout",
     }));
   });
 

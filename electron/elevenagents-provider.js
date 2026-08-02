@@ -184,6 +184,8 @@ const buildConfiguredConversationConfig = (agent, modelId, voiceId) => {
   config.turn = {
     ...(config.turn || {}),
     turn_eagerness: EXPECTED.turnEagerness,
+    turn_timeout: EXPECTED.turnTimeoutSeconds,
+    silence_end_call_timeout: EXPECTED.silenceEndCallTimeoutSeconds,
     soft_timeout_config: {
       timeout_seconds: EXPECTED.softTimeoutSeconds,
       message: "Hmm...",
@@ -348,6 +350,20 @@ export const inspectElevenAgentConfig = (agent) => {
   }
   if (turn.turn_eagerness !== EXPECTED.turnEagerness) {
     issues.push(issue(CODES.TURN_CONFIG_MISMATCH, "conversation_config.turn.turn_eagerness", "Turn eagerness 必须为 normal。"));
+  }
+  if (Number(turn.turn_timeout) !== EXPECTED.turnTimeoutSeconds) {
+    issues.push(issue(
+      CODES.TURN_CONFIG_MISMATCH,
+      "conversation_config.turn.turn_timeout",
+      `等待用户说话的静默窗口必须为 ${EXPECTED.turnTimeoutSeconds} 秒。`,
+    ));
+  }
+  if (Number(turn.silence_end_call_timeout) !== EXPECTED.silenceEndCallTimeoutSeconds) {
+    issues.push(issue(
+      CODES.TURN_CONFIG_MISMATCH,
+      "conversation_config.turn.silence_end_call_timeout",
+      "不得因用户静默自动结束连续语音会话。",
+    ));
   }
   if (Number(turn.soft_timeout_config?.timeout_seconds) !== EXPECTED.softTimeoutSeconds) {
     issues.push(issue(

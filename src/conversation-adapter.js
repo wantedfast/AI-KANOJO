@@ -167,10 +167,12 @@ export const normalizeConversationClientError = (value) => {
 export const sanitizeAgentReply = (value) => {
   const text = String(value || "").trim();
   const lines = text.split(/\r?\n/);
-  const routingLine = /^\s*(?:\[(?:language_detection|reason|language)\]|(?:use|switch(?:ing)?\s+to|respond(?:ing)?\s+in)\s+(?:chinese|english|japanese)\b)/i;
+  const routingLine = /^\s*(?:language_detection\s+(?:tool\s+)?call\b|\[(?:language_detection|reason|language)\]|(?:use|switch(?:ing)?\s+to|respond(?:ing)?\s+in)\s+(?:chinese|english|japanese)\b)/i;
   while (lines.length && routingLine.test(lines[0])) lines.shift();
   return lines.join("\n").trim();
 };
+
+const hasLexicalContent = (value) => /[\p{L}\p{N}]/u.test(String(value || ""));
 
 export function createElevenAgentsConversationAdapter({
   api,
@@ -303,6 +305,23 @@ export function createElevenAgentsConversationAdapter({
     if (timer != null) clearTimer(timer);
     sendTimers.delete(turnId);
   };
+  const discardNonSpeechTurn = () => {
+    const turn = activeTurnId && findTurn(activeTurnId);
+    if (turn && !turn.messageSent && !hasLexicalContent(turn.transcriptFinal)) {
+      clearSendTimer(turn.turnId);
+      store.publish({
+        voiceTurns: store.getSnapshot().voiceTurns.filter((item) => item.turnId !== turn.turnId),
+      });
+    }
+    activeTurnId = "";
+    store.publish({
+      phase: sessionKind === "voice" ? "listening" : store.getSnapshot().phase,
+      voiceState: sessionKind === "voice" ? "Listening" : store.getSnapshot().voiceState,
+      activeTurnId: "",
+      transcript: "",
+      transcriptPartial: "",
+    });
+  };
   const markSendFailed = (turnId, message = "发送失败，可重试") => {
     const turn = findTurn(turnId);
     if (!turn || turn.messageSent) return;
@@ -365,7 +384,7 @@ export function createElevenAgentsConversationAdapter({
   };
   const receivePartialTranscript = (value) => {
     const text = String(value || "").trim();
-    if (!text) return;
+    if (!hasLexicalContent(text)) return;
     const turnId = ensureActiveTurn({ speechDetected: true });
     const turn = findTurn(turnId);
     if (turn?.messageSent) return;
@@ -382,7 +401,10 @@ export function createElevenAgentsConversationAdapter({
   };
   const receiveFinalTranscript = (value) => {
     const text = String(value || "").trim();
-    if (!text) return;
+    if (!hasLexicalContent(text)) {
+      discardNonSpeechTurn();
+      return;
+    }
     const turnId = ensureActiveTurn({ speechDetected: true });
     const turn = findTurn(turnId);
     if (turn?.transcriptFinal !== text) logTurn(turnId, "transcriptFinal", text);
@@ -594,6 +616,16 @@ export function createElevenAgentsConversationAdapter({
       if (currentRun !== runId) return;
       const normalizedRole = role === "agent" || source === "ai" ? "assistant" : "user";
       const rawText = String(message || "").trim();
+      if (normalizedRole === "user" && !hasLexicalContent(rawText)) {
+        discardNonSpeechTurn();
+        return;
+      }
+      if (normalizedRole === "assistant" && kind === "voice") {
+        const pendingTurn = activeTurnId && findTurn(activeTurnId);
+        const hasValidPendingTurn = pendingTurn
+          && (hasLexicalContent(pendingTurn.transcriptFinal) || pendingTurn.messageSent);
+        if (!hasValidPendingTurn) return;
+      }
       const text = normalizedRole === "assistant" ? sanitizeAgentReply(rawText) : rawText;
       if (!text) return;
       appendMessage(normalizedRole, text);

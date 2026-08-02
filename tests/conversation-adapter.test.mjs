@@ -86,6 +86,7 @@ describe("ElevenAgents renderer adapter", () => {
   it("removes leaked language routing metadata from an agent reply", () => {
     expect(sanitizeAgentReply("[language_detection] User switched to Chinese. [reason] Changed. [language] zh\n你好，很高兴见到你。")).toBe("你好，很高兴见到你。");
     expect(sanitizeAgentReply("Use Chinese.\n你好，很高兴见到你。")).toBe("你好，很高兴见到你。");
+    expect(sanitizeAgentReply('language_detection tool call: reason="User requested switching to Japanese", language="ja"\nこんにちは。')).toBe("こんにちは。");
     expect(sanitizeAgentReply("[laughs] 当然可以。")).toBe("[laughs] 当然可以。");
   });
 
@@ -107,6 +108,40 @@ describe("ElevenAgents renderer adapter", () => {
     await vi.waitFor(() => expect(playStandaloneAudio).toHaveBeenCalledOnce());
     expect(adapter.getSnapshot().reply).toBe("你好呀。");
     expect(adapter.getSnapshot().messages.at(-1).content).toBe("你好呀。");
+  });
+
+  it("ignores punctuation-only microphone turns and their unsolicited Agent reply", async () => {
+    const playStandaloneAudio = vi.fn(async () => {});
+    const { adapter, api, session, getCallbacks } = createHarness({ playStandaloneAudio });
+    adapter.startVoice("mic-1", { voiceId: "YyODrkDd1qMUj9jupJch", ttsModelId: "eleven_v3" });
+    await vi.waitFor(() => expect(session.setVolume).toHaveBeenCalledWith({ volume: 0 }));
+
+    getCallbacks().onMessage({ role: "user", message: "..." });
+    getCallbacks().onMessage({ role: "agent", message: "Hey, are you still there?" });
+
+    expect(api.synthesize).not.toHaveBeenCalled();
+    expect(playStandaloneAudio).not.toHaveBeenCalled();
+    expect(adapter.getSnapshot()).toMatchObject({
+      phase: "listening",
+      transcript: "",
+      reply: "",
+      messages: [],
+    });
+  });
+
+  it("does not create a caption turn for punctuation-only Scribe output", async () => {
+    const { adapter, conversationClient, room } = createHarness();
+    adapter.startVoice();
+    await vi.waitFor(() => expect(conversationClient.startSession).toHaveBeenCalledOnce());
+
+    room.emit("transcriptionReceived", [{ id: "silence", text: "...", final: true }], room.localParticipant);
+
+    expect(adapter.getSnapshot()).toMatchObject({
+      phase: "listening",
+      transcript: "",
+      transcriptPartial: "",
+      voiceTurns: [],
+    });
   });
 
   it("opens voice with a WebRTC token and maps transcript, reply, pause and resume", async () => {
