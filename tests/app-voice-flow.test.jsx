@@ -42,6 +42,8 @@ describe("frontend conversation surfaces", () => {
       voiceId: "",
       ttsModelId: "eleven_v3_conversational",
     });
+    expect(screen.getByText("语音对话")).toBeInTheDocument();
+    expect(container.querySelectorAll(".portrait-button")).toHaveLength(1);
     expect(screen.getByLabelText("简短语音对话")).toHaveTextContent("正在听");
 
     act(() => adapter.publish({ phase: "thinking", transcript: "今天过得怎么样？" }));
@@ -97,7 +99,7 @@ describe("frontend conversation surfaces", () => {
         { turnId: "turn-2", transcriptPartial: "", transcriptFinal: "陪我出去走走", status: "send_failed", error: "发送失败，可重试" },
       ],
     }));
-    expect(screen.getAllByText("今天天气很好")).toHaveLength(1);
+    expect(screen.queryByText("今天天气很好")).not.toBeInTheDocument();
     expect(screen.getAllByText("陪我出去走走")).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     expect(adapter.retryVoiceTurn).toHaveBeenCalledWith("turn-2");
@@ -130,10 +132,12 @@ describe("frontend conversation surfaces", () => {
 
     fireEvent.click(container.querySelector(".feature-companion"));
     expect(screen.getByLabelText("简短语音对话")).toBeInTheDocument();
+    expect(container.querySelectorAll(".portrait-button")).toHaveLength(1);
     fireEvent.click(container.querySelector(".feature-chat"));
     expect(adapter.endVoice).toHaveBeenCalledOnce();
     expect(screen.getByLabelText("与罗照月文字聊天")).toBeInTheDocument();
     expect(screen.queryByLabelText("简短语音对话")).not.toBeInTheDocument();
+    expect(container.querySelectorAll(".portrait-button")).toHaveLength(1);
 
     act(() => adapter.publish({ phase: "speaking", reply: "迟到的语音事件" }));
     expect(screen.getByLabelText("与罗照月文字聊天")).toBeInTheDocument();

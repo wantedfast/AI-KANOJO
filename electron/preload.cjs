@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld("kanojo", {
   isDesktop: true,
   getBootstrap: () => ipcRenderer.invoke("app:bootstrap"),
   saveSettings: (settings) => ipcRenderer.invoke("settings:save", settings),
+  importCharacterAsset: (payload) => ipcRenderer.invoke("assets:import", payload),
+  resetCharacterAsset: (payload) => ipcRenderer.invoke("assets:reset", payload),
   saveChat: (chat) => ipcRenderer.invoke("chat:save", chat),
   saveCredentials: (credentials) => ipcRenderer.invoke("credentials:save", credentials),
   getScribeToken: () => ipcRenderer.invoke("scribe:token"),

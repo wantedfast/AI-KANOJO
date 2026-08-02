@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, safeStorage, screen, Tray } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, safeStorage, screen, Tray } from "electron";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +8,7 @@ import { importDesktopCredentials } from "./credential-import.js";
 import { ElevenAgentsService } from "./elevenagents-service.js";
 import { toSafeElevenAgentsError } from "../shared/elevenagents-contracts.js";
 import { ELEVEN_V3_CONVERSATIONAL_MODEL_ID, isSupportedElevenTtsModel } from "../shared/model-contracts.js";
+import { createCharacterAssetManager } from "./character-assets.js";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(directory, "..");
@@ -40,6 +41,7 @@ let dragPollTimer;
 let nativeMoveActive = false;
 let nativeMoveEndTimer;
 let elevenAgentsService;
+let characterAssetManager;
 
 const safeElevenAgentsCall = async (operation) => {
   try {
@@ -215,7 +217,7 @@ function createTray() {
 }
 
 function installIpc() {
-  ipcMain.handle("app:bootstrap", () => {
+  ipcMain.handle("app:bootstrap", async () => {
     const data = store.get();
     return {
       settings: data.settings,
@@ -224,8 +226,11 @@ function installIpc() {
       credentials: credentialStatus(),
       smokeMode: Boolean(smokeReportPath),
       conversationBackend: elevenAgentsService.getStatus(),
+      characterAssets: await characterAssetManager.resolve(),
     };
   });
+  ipcMain.handle("assets:import", (_event, payload = {}) => characterAssetManager.importAsset(payload));
+  ipcMain.handle("assets:reset", (_event, payload = {}) => characterAssetManager.reset(payload));
   ipcMain.handle("settings:save", async (_event, settings) => {
     const sanitized = {
       voiceId: String(settings.voiceId || "").trim().slice(0, 160),
@@ -527,15 +532,18 @@ async function runSmokeCheck(reportPath) {
   window.webContents.send("ui:open-settings");
   renderer.settingsLayout = await window.webContents.executeJavaScript(`
     (async () => {
-      await new Promise((resolve) => setTimeout(resolve, 30));
+      await new Promise((resolve) => setTimeout(resolve, 250));
       const panel = document.querySelector('[aria-label="设置与诊断"]');
       const selects = Array.from(panel?.querySelectorAll('.settings-grid select') || []).map((select) => {
         const rect = select.getBoundingClientRect();
         return { top: rect.top, height: rect.height };
       });
+      const assetManager = panel?.querySelector('.character-assets-manager');
       return {
         visible: Boolean(panel),
         fieldCount: selects.length,
+        assetManagerVisible: Boolean(assetManager),
+        assetImportActionCount: assetManager?.querySelectorAll('button[aria-label^="替换"]').length || 0,
         aligned: selects.length === 3
           && selects.every((select) => Math.abs(select.top - selects[0].top) <= 1 && Math.abs(select.height - selects[0].height) <= 1),
         selects,
@@ -572,6 +580,12 @@ app.whenReady().then(async () => {
   if (!ownsSingleInstance) return;
   store = new JsonStore(app.getPath("userData"));
   await store.load();
+  characterAssetManager = createCharacterAssetManager({
+    directory: app.getPath("userData"),
+    store,
+    dialog,
+    validateImage: (filePath) => !nativeImage.createFromPath(filePath).isEmpty(),
+  });
   elevenAgentsService = new ElevenAgentsService({ store, getApiKey: () => decrypt("elevenlabs") });
   if (!smokeReportPath && !restoreReportPath && !duplicateProbePath) {
     await importDesktopCredentials({

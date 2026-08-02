@@ -9,10 +9,12 @@ import { createCompanionController, STATE_META } from "./companion-controller.js
 import { RealtimeScribe } from "./realtime-scribe.js";
 import { EMPTY_CONVERSATION_SNAPSHOT, resolveConversationAdapter } from "./conversation-adapter.js";
 import { TextChatPanel, VoiceConversationPopover } from "./conversation-surfaces.jsx";
+import { CharacterAssetsManager } from "./character-assets-manager.jsx";
 import {
   ELEVEN_TTS_MODEL_OPTIONS,
   ELEVEN_V3_CONVERSATIONAL_MODEL_ID,
 } from "../shared/model-contracts.js";
+import { CHARACTER_ASSET_STATES, DEFAULT_CHARACTER_ASSETS, visualStateAssetKey } from "../shared/character-assets.js";
 
 const api = window.kanojo ?? {
   isDesktop: false,
@@ -21,6 +23,7 @@ const api = window.kanojo ?? {
     chat: [],
     credentials: { deepseek: false, elevenlabs: false },
     locked: false,
+    characterAssets: { portrait: { src: null, fileName: null, customized: false }, states: {} },
   }),
   saveSettings: async (settings) => settings,
   saveChat: async () => true,
@@ -29,6 +32,8 @@ const api = window.kanojo ?? {
   streamReply: async () => { throw new Error("桌面应用中才能连接 DeepSeek"); },
   synthesize: async () => { throw new Error("桌面应用中才能连接 Eleven v3"); },
   listVoices: async () => ({ ok: true, value: [] }),
+  importCharacterAsset: async () => ({ canceled: true }),
+  resetCharacterAsset: async () => ({ assets: null }),
   setLocked: async (locked) => locked,
   startWindowDrag: () => {},
   moveWindowDrag: () => {},
@@ -41,6 +46,10 @@ const api = window.kanojo ?? {
 
 const DEMO_PARTIAL = "今天也想和你聊";
 const DEMO_FINAL = "今天也想和你聊一会儿。";
+const emptyCharacterAssets = () => ({
+  portrait: { src: null, fileName: null, customized: false },
+  states: Object.fromEntries(CHARACTER_ASSET_STATES.map((state) => [state, { src: null, fileName: null, customized: false }])),
+});
 
 function IconFeatureButton({ id, className = "", onClick, icon, label }) {
   return (
@@ -106,6 +115,9 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
   const [voiceCatalogState, setVoiceCatalogState] = useState("idle");
   const [voiceCatalogError, setVoiceCatalogError] = useState("");
   const [locked, setLocked] = useState(false);
+  const [characterAssets, setCharacterAssets] = useState(emptyCharacterAssets);
+  const [assetBusyKey, setAssetBusyKey] = useState("");
+  const [assetNote, setAssetNote] = useState("");
   const [minimized, setMinimized] = useState(false);
   const [saveNote, setSaveNote] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
@@ -175,6 +187,7 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
       conversation.setBackendStatus?.(data.conversationBackend);
       conversation.hydrate?.(data.chat);
       setLocked(Boolean(data.locked));
+      if (data.characterAssets) setCharacterAssets(data.characterAssets);
       controller.hydrate(data.chat);
     }).catch((error) => controller.fail(error.message));
     const unsubscribe = api.onOpenSettings?.(() => setPanel("settings"));
@@ -425,6 +438,36 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
     setTimeout(() => setSaveNote(""), 1800);
   };
 
+  const importCharacterAsset = async (payload) => {
+    const key = payload.type === "portrait" ? "portrait" : payload.state;
+    setAssetBusyKey(key);
+    setAssetNote("");
+    try {
+      const result = await api.importCharacterAsset?.(payload);
+      if (result?.assets) setCharacterAssets(result.assets);
+      setAssetNote(result?.canceled ? "已取消导入" : "角色资产已替换");
+    } catch (error) {
+      setAssetNote(error.message || "角色资产导入失败");
+    } finally {
+      setAssetBusyKey("");
+    }
+  };
+
+  const resetCharacterAsset = async (payload) => {
+    const key = payload.type === "portrait" ? "portrait" : "states";
+    setAssetBusyKey(key);
+    setAssetNote("");
+    try {
+      const result = await api.resetCharacterAsset?.(payload);
+      if (result?.assets) setCharacterAssets(result.assets);
+      setAssetNote("已恢复默认角色资产");
+    } catch (error) {
+      setAssetNote(error.message || "恢复默认资产失败");
+    } finally {
+      setAssetBusyKey("");
+    }
+  };
+
   const startWindowDrag = (event) => {
     const interactiveTarget = event.target instanceof Element
       && event.target.closest("button, input, select, textarea, a, [data-no-window-drag]");
@@ -485,6 +528,12 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
     conversation.endVoice?.();
     setConversationSurface("none");
   };
+  const openSettingsPanel = (event) => {
+    event?.preventDefault?.();
+    if (conversationSurface !== "none") conversation.closeSurface?.(conversationSurface);
+    setConversationSurface("none");
+    setPanel("settings");
+  };
 
   const conversationVisualPhase = ["connecting", "transcribing"].includes(conversationSnapshot.phase)
     ? "listening"
@@ -497,13 +546,25 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
     : conversationSnapshot.phase === "paused"
       ? "idle"
       : supportedVisualState === "idle" ? "completed" : supportedVisualState;
-  const meta = STATE_META[visualState];
+  const assetStateKey = visualStateAssetKey(visualState);
+  const meta = {
+    ...STATE_META[visualState],
+    src: characterAssets.states?.[assetStateKey]?.src || DEFAULT_CHARACTER_ASSETS.states[assetStateKey],
+  };
+  const portraitSrc = characterAssets.portrait?.src || DEFAULT_CHARACTER_ASSETS.portrait;
   const displayActiveSession = conversationSurface !== "none";
   const visibleNotice = featureNotice;
   const codexWorking = displayActiveSession && ["thinking", "speaking"].includes(visualState);
+  const showConversationPortrait = displayActiveSession && visualState !== "idle" && !minimized && panel !== "settings";
   return (
     <main className={`desktop-stage state-${visualState} ${displayActiveSession ? "is-awake" : "is-asleep"} ${minimized ? "is-minimized" : ""} ${panel === "settings" ? "has-settings" : ""} ${api.isDesktop ? "is-desktop-runtime" : "is-browser-preview"}`}>
       <section className="companion-shell" aria-label="AI-KANOJO 桌面女友">
+        {showConversationPortrait && (
+          <div className="portrait-button conversation-portrait" data-testid="conversation-portrait" aria-hidden="true">
+            <img src={portraitSrc} alt="" draggable="false" />
+          </div>
+        )}
+
         {minimized && (
           <button
             className={`avatar-button animation-${meta.animation}`}
@@ -525,6 +586,7 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
           onPointerUp={endWindowDrag}
           onPointerCancel={endWindowDrag}
           onLostPointerCapture={endWindowDrag}
+          onContextMenu={openSettingsPanel}
           title={locked ? "位置已锁定" : "拖动胶囊空白区域可移动窗口"}
         >
           <span className="rail-flow-edge" aria-hidden="true">
@@ -604,6 +666,7 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
         {!minimized && panel !== "settings" && conversationSurface === "voice" && (
           <VoiceConversationPopover
             snapshot={conversationSnapshot}
+            portraitSrc={portraitSrc}
             onPause={() => conversation.pauseVoice?.()}
             onResume={() => conversation.resumeVoice?.()}
             onEnd={endVoiceConversation}
@@ -614,7 +677,7 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
         {panel === "settings" && (
           <section className="glass-panel settings-panel" aria-label="设置与诊断">
             <header className="panel-header">
-              <div><span className="eyebrow">VOICE</span><h1>音色与麦克风</h1></div>
+              <div><span className="eyebrow">VOICE & CHARACTER</span><h1>声音与角色</h1></div>
               <button type="button" className="text-button" onClick={() => setPanel("compact")}>完成</button>
             </header>
 
@@ -632,6 +695,13 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
               </select><small className="settings-hint">Conversational 响应更快；标准 V3 使用独立合成，音质优先但延迟更高。</small></label>
               <label><span>麦克风</span><select value={settings.microphoneId} onChange={(event) => setSettings({ ...settings, microphoneId: event.target.value })}><option value="">系统默认麦克风</option>{microphones.map((device, index) => <option value={device.deviceId} key={device.deviceId}>{device.label || `麦克风 ${index + 1}`}</option>)}</select></label>
             </div>
+            <CharacterAssetsManager
+              assets={characterAssets}
+              busyKey={assetBusyKey}
+              note={assetNote}
+              onImport={importCharacterAsset}
+              onReset={resetCharacterAsset}
+            />
             <button type="button" className="primary-button" onClick={savePreferences} disabled={savingSettings}>{saveNote || "应用并保存设置"}</button>
           </section>
         )}

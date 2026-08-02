@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App.jsx";
 
@@ -130,15 +130,104 @@ describe("flat spectrum feature rail", () => {
     expect(screen.getByLabelText("Codex Working")).toHaveTextContent("Working");
   });
 
-  it("never renders the retired 2D portrait in voice or text chat", async () => {
+  it("shows one Modern JK portrait only while voice or text chat is open", async () => {
     const { container } = render(<App />);
     await act(async () => Promise.resolve());
 
     expect(container.querySelector(".portrait-button")).not.toBeInTheDocument();
     fireEvent.click(container.querySelector(".feature-companion"));
+    expect(container.querySelectorAll(".portrait-button")).toHaveLength(1);
+    expect(container.querySelector(".portrait-button img")).toHaveAttribute("src", "./avatar/outfits/front/02-modern-jk-conversation.png");
+    fireEvent.click(container.querySelector(".feature-companion"));
     expect(container.querySelector(".portrait-button")).not.toBeInTheDocument();
+    fireEvent.click(container.querySelector(".feature-companion"));
+    expect(container.querySelectorAll(".portrait-button")).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "结束语音对话" }));
-    fireEvent.click(container.querySelector(".feature-chat"));
     expect(container.querySelector(".portrait-button")).not.toBeInTheDocument();
+    fireEvent.click(container.querySelector(".feature-chat"));
+    expect(container.querySelectorAll(".portrait-button")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "缩小悬浮窗" }));
+    expect(container.querySelector(".portrait-button")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "展开悬浮窗" }));
+    expect(container.querySelector(".portrait-button")).not.toBeInTheDocument();
+    fireEvent.click(container.querySelector(".feature-chat"));
+    expect(container.querySelectorAll(".portrait-button")).toHaveLength(1);
+    fireEvent.click(container.querySelector(".conversation-icon-button"));
+    expect(container.querySelector(".portrait-button")).not.toBeInTheDocument();
+  });
+
+  it("hides the conversation portrait when settings opens", async () => {
+    let openSettings;
+    const runtimeApi = {
+      isDesktop: false,
+      getBootstrap: async () => ({
+        settings: { voiceId: "", microphoneId: "", ttsModelId: "eleven_v3_conversational" },
+        chat: [],
+        credentials: { deepseek: true, elevenlabs: true },
+        locked: false,
+      }),
+      listVoices: async () => ({ ok: true, value: [] }),
+      onOpenSettings: (callback) => { openSettings = callback; return () => {}; },
+      onLockedChanged: () => () => {},
+    };
+    const { container } = render(<App runtimeApi={runtimeApi} />);
+    await waitFor(() => expect(openSettings).toBeTypeOf("function"));
+
+    fireEvent.click(container.querySelector(".feature-chat"));
+    expect(container.querySelector(".portrait-button")).toBeInTheDocument();
+    await act(async () => {
+      openSettings();
+      await Promise.resolve();
+    });
+    expect(container.querySelector(".settings-panel")).toBeInTheDocument();
+    expect(container.querySelector(".portrait-button")).not.toBeInTheDocument();
+  });
+
+  it("imports and previews replacement portrait and 8-bit assets from settings", async () => {
+    let openSettings;
+    const importCharacterAsset = vi.fn(async (payload) => ({
+      canceled: false,
+      assets: {
+        portrait: payload.type === "portrait"
+          ? { src: "data:image/png;base64,cG9ydHJhaXQ=", fileName: "portrait.png", customized: true }
+          : { src: null, fileName: null, customized: false },
+        states: {
+          idle: payload.state === "idle"
+            ? { src: "data:image/webp;base64,cGl4ZWw=", fileName: "idle.webp", customized: true }
+            : { src: null, fileName: null, customized: false },
+          listening: { src: null, fileName: null, customized: false },
+          thinking: { src: null, fileName: null, customized: false },
+          completed: { src: null, fileName: null, customized: false },
+        },
+      },
+    }));
+    const runtimeApi = {
+      isDesktop: false,
+      getBootstrap: async () => ({
+        settings: { voiceId: "voice", microphoneId: "", ttsModelId: "eleven_v3_conversational" },
+        chat: [], credentials: { deepseek: true, elevenlabs: true }, locked: false,
+        characterAssets: {
+          portrait: { src: null, fileName: null, customized: false },
+          states: Object.fromEntries(["idle", "listening", "thinking", "completed"].map((state) => [state, { src: null, fileName: null, customized: false }])),
+        },
+      }),
+      listVoices: async () => ({ ok: true, value: [] }),
+      importCharacterAsset,
+      onOpenSettings: (callback) => { openSettings = callback; return () => {}; },
+      onLockedChanged: () => () => {},
+    };
+    const { container } = render(<App runtimeApi={runtimeApi} />);
+    await waitFor(() => expect(openSettings).toBeTypeOf("function"));
+    fireEvent.contextMenu(container.querySelector(".status-rail"));
+
+    const manager = container.querySelector(".character-assets-manager");
+    expect(manager).toBeInTheDocument();
+    fireEvent.click(manager.querySelector(".portrait-asset-card button"));
+    await waitFor(() => expect(importCharacterAsset).toHaveBeenCalledWith({ type: "portrait" }));
+    expect(manager.querySelector(".portrait-asset-preview img")).toHaveAttribute("src", "data:image/png;base64,cG9ydHJhaXQ=");
+
+    fireEvent.click(manager.querySelector(".pixel-asset-item button"));
+    await waitFor(() => expect(importCharacterAsset).toHaveBeenCalledWith({ type: "state", state: "idle" }));
+    expect(manager.querySelector(".pixel-asset-preview img")).toHaveAttribute("src", "data:image/webp;base64,cGl4ZWw=");
   });
 });

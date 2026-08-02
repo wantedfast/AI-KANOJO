@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ELEVEN_V3_CONVERSATIONAL_MODEL_ID, isSupportedElevenTtsModel } from "../shared/model-contracts.js";
+import { sanitizeCharacterAssetConfig } from "./character-assets.js";
 
 export class JsonStore {
   constructor(directory) {
@@ -12,6 +13,7 @@ export class JsonStore {
       window: null,
       locked: false,
       secrets: {},
+      characterAssets: sanitizeCharacterAssetConfig(),
       elevenAgents: { agentId: "", verifiedAgentId: "", verifiedAt: 0, configVersion: "" },
     };
   }
@@ -31,6 +33,7 @@ export class JsonStore {
             : ELEVEN_V3_CONVERSATIONAL_MODEL_ID,
         },
         secrets: { ...this.data.secrets, ...parsed.secrets },
+        characterAssets: sanitizeCharacterAssetConfig(parsed.characterAssets),
         elevenAgents: {
           agentId: String(parsed.elevenAgents?.agentId || "").trim().slice(0, 160),
           verifiedAgentId: String(parsed.elevenAgents?.verifiedAgentId || "").trim().slice(0, 160),

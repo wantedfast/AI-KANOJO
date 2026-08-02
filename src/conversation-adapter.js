@@ -104,7 +104,7 @@ export function createPreviewConversationAdapter({ setTimer = setTimeout, clearT
     schedule(() => currentRun === runId && store.publish({ phase: "thinking" }), 1500);
     schedule(() => currentRun === runId && store.publish({ phase: "speaking", reply: "见到你之后，心情就更好啦。" }), 2400);
     schedule(() => currentRun === runId && store.publish({ phase: "completed" }), 3900);
-    schedule(() => currentRun === runId && store.publish({ phase: "listening", transcript: "", reply: "" }), 4500);
+    schedule(() => currentRun === runId && store.publish({ phase: "listening" }), 4500);
   };
 
   return {

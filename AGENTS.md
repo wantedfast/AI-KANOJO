@@ -1,5 +1,20 @@
 # Prototype Instructions
 
+## Highest-priority character asset management override (v2.3 selected)
+
+- The default conversation portrait is `public/avatar/outfits/front/02-modern-jk-conversation.png`: the half-body Modern JK pose with relaxed arms derived from the user's selected portrait reference. The previous full-body A-pose `02-modern-jk.png` remains an available source asset but is not the runtime default.
+- Settings must include a compact Character Assets manager for replacing the conversation portrait and each of the four canonical 8-bit states: `idle`, `listening`, `thinking`, and `completed`.
+- Imported character images must be selected through a restricted Electron file dialog, validated as PNG/WebP/JPEG under 12MB, copied into the app's user-data directory, and persisted by filename only. Never persist arbitrary source paths or expose filesystem access to the renderer.
+- Custom assets apply immediately and survive relaunch. Users can restore the default portrait or the complete default 8-bit set.
+- `speaking` continues to reuse the `listening` asset and `error` continues to reuse the `thinking` asset. Asset replacement must not change the frozen capsule geometry or the 160px 8-bit display scale.
+
+## Highest-priority conversation portrait override (v2.2 selected)
+
+- Restore `public/avatar/outfits/front/02-modern-jk.png` as the large 2D Luo Zhaoyue portrait only while the voice or text conversation surface is open. Hide it in idle, settings, minimized, and closed-session states.
+- Place both conversation surfaces immediately to the portrait's right inside the existing 1040×620 transparent renderer canvas. The voice surface uses the supplied speech-bubble reference and points toward the active 8-bit character; the text surface keeps its existing message/composer anatomy at the same anchor.
+- The large portrait supplements rather than replaces the fixed-scale 160px 8-bit state avatar. Preserve the capsule, avatar slot, Codex block, traffic lights, drag behavior, minimized state, and backend data contract unchanged.
+- This override supersedes v1.9 only where v1.9 removes the large portrait. The frontend-only scope and all capsule-preservation requirements remain in force.
+
 ## Current flat capsule override (v1.6)
 
 - Keep the visible capsule at `520×88px` with a 28px radius. The rail must read as a flat glass bar, not a stadium pill.
@@ -110,3 +125,10 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 - The current ElevenAgents validation task is backend-only because the frontend is being redesigned independently. Do not modify or constrain `src/` UI, button behavior, layout, animation or conversation presentation for this task.
 - Backend scope is limited to ElevenAgent configuration validation, secure Agent ID storage, short-lived conversation credential issuance, restricted preload/IPC contracts, error normalization and backend tests.
 - The future frontend will own microphone capture, WebRTC/WebSocket media session handling, audio playback and visual state rendering by consuming the backend's short-lived credential contract.
+
+## Character 02 asset candidate (v002)
+
+- A second adult male companion asset family is being designed in parallel with Luo Zhaoyue. Until the user supplies a name, use the neutral identifier `character-02`. The earlier v001 female direction is rejected history.
+- Preserve the identity defined in `assets/character/character-02/source/character-02-lookdev-v002.png`: short layered deep navy-violet hair, violet-gray eyes, mature gentle masculine facial proportions, thin black rectangular eyeglasses, and a tailored charcoal-navy Japanese office suit with white shirt and muted lavender-gray tie.
+- `character-02-lookdev-v002.png` is the candidate identity truth; `character-02-turnaround-v002.png` and `character-02-8bit-states-v002.png` are derived design references.
+- Do not replace Luo Zhaoyue runtime assets or wire Character 02 into `src/` until the user explicitly approves the identity and requests integration.

@@ -111,6 +111,8 @@ if (
   || !report.renderer.settingsVisible
   || !report.renderer.settingsLayout?.aligned
   || report.renderer.settingsLayout.fieldCount !== 3
+  || !report.renderer.settingsLayout.assetManagerVisible
+  || report.renderer.settingsLayout.assetImportActionCount !== 5
 ) {
   throw new Error(`Renderer smoke assertions failed: ${JSON.stringify(report.renderer)}`);
 }

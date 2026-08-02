@@ -13,11 +13,15 @@
 | 光谱长胶囊定稿 | `ui-concepts/07-spectrum-capsule.png` | 当前 UI 唯一视觉基准 |
 | 罗照月 v005 | `character/luo-zhaoyue/source/luo-zhaoyue-lookdev-v005.png` | 唯一身份标准 |
 | 旧三视图 | `character/luo-zhaoyue/source/luo-zhaoyue-legacy-turnaround.png` | 仅作结构参考 |
+| Character 02 男性身份候选 v002 | `character/character-02/source/character-02-lookdev-v002.png` | 男性五官、黑框眼镜、体态与日系西装候选标准 |
+| Character 02 男性三视图 v002 | `character/character-02/source/character-02-turnaround-v002.png` | 男性方向视图、眼镜与表情参考 |
+| Character 02 男性 8-bit 状态 v002 | `character/character-02/source/character-02-8bit-states-v002.png` | 男性四种运行姿势设计页，尚未切分接入 |
 
 ## Runtime
 
 | 状态 | 路径 | 说明 |
 |---|---|---|
+| conversation portrait | `../public/avatar/outfits/front/02-modern-jk-conversation.png` | 会话打开时的默认半身 JK 立绘；自然垂臂姿态 |
 | idle | `../public/avatar/8bit/states/idle.png` | 休眠关键姿势 |
 | listening | `../public/avatar/8bit/states/listening.png` | 聆听关键姿势 |
 | thinking | `../public/avatar/8bit/states/thinking.png` | 思考关键姿势 |

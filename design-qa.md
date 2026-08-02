@@ -1,53 +1,54 @@
-# AI-KANOJO conversation surfaces — design QA
+# AI-KANOJO 角色立绘与资产管理 — Design QA
 
-## Scope
+## 目标与证据
 
-- Frontend-only text chat panel and compact voice conversation popover.
-- Existing capsule is a protected surface: its geometry, feature controls, 8-bit slot, Codex block, traffic lights, drag behavior, and minimized state were not redesigned.
-- The large 2D portrait is intentionally absent. The existing 160px 8-bit character remains the sole character representation.
+- Source visual truth：`C:\Users\wangf\AppData\Local\Temp\codex-clipboard-adc3f988-65d6-4c8e-943c-f86c2cf4b929.png`，233×604px。目标是黑发高髻、细框眼镜、JK 制服、自然垂臂的半身立绘。
+- Default production asset：`public/avatar/outfits/front/02-modern-jk-conversation.png`，679×1637px RGBA。
+- Browser implementation：`design-qa/conversation-portrait-v23-browser-final.jpg`，1280×720px，浏览器 CSS viewport 1280×720、device scale 1。
+- Electron conversation implementation：`design-qa/electron-smoke-user-data/17492-1785660268530/electron-awake.png`，1560×930px；Electron CSS viewport 1040×620、Windows device scale 1.5。
+- Electron asset manager implementation：`design-qa/electron-smoke-user-data/17492-1785660268530/electron-smoke.png`，1560×930px；同一 1040×620 CSS viewport。
+- Focused portrait comparison：`design-qa/character-portrait-v23-comparison.png`。参考与 Electron 实现均按角色可见区域归一化后并排比较。
 
-## Visual sources
+## Findings
 
-- Text chat target: `C:\Users\wangf\.codex\generated_images\019fbd9d-2a05-7da2-9c82-7c0235152752\exec-4ccd7c2a-6b0c-4bde-a107-e6ef7735e038.png`
-- Voice target: `C:\Users\wangf\.codex\generated_images\019fbd9d-2a05-7da2-9c82-7c0235152752\exec-bb471696-a6de-410e-9913-c610c54d8e19.png`
-- Implemented text surface: `design-qa/frontend-chat-window.png`
-- Implemented voice states: `design-qa/electron-awake.png`, `design-qa/electron-working.png`
-- Voice comparison: `design-qa/conversation-voice-comparison.png`
-- Focused voice comparison: `design-qa/conversation-voice-focused-comparison.png`
+- 无剩余 P0/P1/P2 问题。
+- [P3] 新默认图由低分辨率合成截图重建，面部线条与原参考存在细微差异；发型、眼镜、制服、色彩、姿态和整体身份语言一致。原始透明立绘不可用，资产管理允许用户在获得原图后无损替换，因此不阻塞本轮验收。
 
-## Environment and states
+## Comparison history
 
-- Runtime: Electron transparent desktop window, 1040×620 CSS window; smoke captures are 1280×720 at the active Windows display scale.
-- Text state: formal desktop runtime without an injected backend adapter, showing the intentional unconfigured message.
-- Voice states: listening and speaking, driven by the controllable frontend preview adapter.
-- Browser navigation to the local preview was unavailable after the controlled in-app tab entered its browser error page; QA therefore used the product's actual Electron runtime and renderer tests.
+1. P1：运行时默认使用 `02-modern-jk.png` 全身 A-pose，与参考的自然垂臂半身立绘明显不符。
+   - Fix：根据参考重建独立高分辨率立绘，改为 `02-modern-jk-conversation.png`，旧 A-pose 文件保留但不再作为默认运行资产。
+2. P2：第一版色键透明化在黑发边缘留下绿色溢色。
+   - Fix：收紧绿色优势阈值、进行边缘去溢色并清零全透明像素 RGB；深色背景复核无可见绿边。
+3. P2：400px 立绘容器裁掉参考中可见的双手。
+   - Fix：桌面立绘容器提高到 450px，并将图片底部偏移从 -130px 调整为 -80px；最终 Electron 图中双手在胶囊上方可见。
 
-## Comparison review
+## Required fidelity surfaces
 
-### Pass 1
+- Fonts/typography：沿用现有系统字体与设置页层级；`VOICE & CHARACTER`、标题、说明和操作文本权重清晰，未引入新字体漂移。
+- Spacing/layout rhythm：会话立绘仍为 220px 宽，贴近胶囊左端；语音框、8-bit、Codex 和交通灯未发生重排。设置资产区使用两栏卡片，1040×620 下内部滚动且胶囊持续可见。
+- Colors/tokens：资产管理沿用 graphite-blue 玻璃、低强度紫色和现有金色 eyebrow；没有新增高强度 HUD 光效。
+- Image quality：默认立绘为透明 RGBA，无背景矩形、绿边或拉伸；8-bit 预览使用 `image-rendering: pixelated`，运行时仍保持 160px 长边。
+- Copy/content：明确区分“会话立绘”和四个 8-bit 状态；显示格式/大小限制、替换、恢复默认及右键胶囊入口。
 
-- P1 layout issue: the first voice popover anchor crossed the active 8-bit character slot.
-- Fix: moved the new surface farther left while keeping the capsule DOM and styles untouched.
-- P1 viewport issue: the text panel's fixed content row could clip its composer on a scaled Windows viewport.
-- Fix: constrained panel height to the available viewport and changed its body to a shrinking grid row, keeping the composer visible without resizing Electron.
+## Interaction and security checks
 
-### Pass 2
+- 右键胶囊或托盘“打开设置”可进入资产管理；胶囊没有新增可见控件。
+- 立绘、休眠、倾听、思考、完成共 5 个替换入口可用；自定义立绘和整套 8-bit 均可恢复默认。
+- Electron 文件对话框仅允许 PNG/WebP/JPEG；单张最大 12MB；文件复制至 `userData/character-assets`；状态只保存受控文件名，渲染进程不获得任意本地路径。
+- 自定义资源通过 data URL 注入 renderer，立即生效并随 state.json 重启恢复。
+- Browser 语音入口、最终状态和资源加载已验证；console error：0。
+- `npm test`：12 个文件、72 项测试通过。
+- `npm run build`：通过。
+- `npm run test:sites`：4/4 通过。
+- `npm run test:electron`：通过；实测立绘 naturalWidth 679、显示宽 220px，8-bit 长边 160px，资产管理可见且 5 个替换入口存在。
 
-- Typography: compact system typography, restrained weights, and short conversational copy match the selected direction.
-- Layout: both surfaces sit outside and above/left of the capsule; the voice popover clears the 8-bit slot and Codex block.
-- Color and material: neutral graphite-blue glass, low-intensity violet/pink accents, thin cool borders, and restrained shadow match the target without introducing a game-HUD glow.
-- Assets: Phosphor icons are used for all new controls; no fake SVG, emoji, CSS art, or placeholder character asset was introduced.
-- Text chat: header, online status, recent history region, empty/error states, composer, Enter send, and Shift+Enter newline are implemented.
-- Voice: one live phase, one user transcript, one Luo Zhaoyue reply, continue-listening hint, pause/resume, and end controls are implemented.
-- Capsule preservation: Electron smoke evidence reports a 520px rail, a 160px avatar long edge, correct icon → avatar → Codex order, no avatar/Codex overlap, two vertical traffic-light controls, and a 160×44 minimized rail.
-- Accepted source difference: generated references include a decorative background, a different rail, and—in the text concept—a large portrait. Those elements are deliberately excluded because the user's frozen capsule and no-portrait decisions are authoritative.
+## Implementation checklist
 
-## Interaction and quality checks
-
-- Renderer tests: 36/36 passed, including text/voice mutual exclusion, injected phases, pause/resume/end, late-event handling, keyboard submission, visible errors, Escape close, no 2D portrait, and existing rail behavior.
-- Build: `npm run build` passed and produced the Sites-ready output.
-- Sites worker: `npm run test:sites` passed (4/4).
-- Electron: the complete visual/movement smoke passed before the latest CSS-only viewport constraint; a later rerun was blocked by a concurrently changed main-process single-instance startup path, outside this frontend-only scope. The renderer and production build remain green.
-- No renderer console error was observed in the successful Electron smoke/capture pass.
+- [x] 修正默认半身立绘。
+- [x] 增加立绘与四状态 8-bit 管理。
+- [x] 安全导入、持久化与恢复默认。
+- [x] 右键胶囊入口与托盘入口。
+- [x] 浏览器、Electron、测试、构建和 Sites 验证。
 
 final result: passed
