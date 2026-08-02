@@ -4,19 +4,20 @@ import {
   createElevenAgentsConversationToken,
   getElevenAgent,
   inspectElevenAgentConfig,
+  listElevenVoices,
 } from "../electron/elevenagents-provider.js";
 import { ELEVENAGENTS_BASE_PROMPT, ELEVENAGENTS_EXPECTED_CONFIG } from "../shared/elevenagents-contracts.js";
 
 const validAgent = (overrides = {}) => ({
   agent_id: "agent_7101k5zvyjhmfg983brhmhkd98n6",
   conversation_config: {
-    language_presets: { zh: {}, ja: {} },
+    language_presets: { en: {}, ja: {} },
     asr: { provider: "scribe_realtime" },
     turn: { turn_eagerness: "normal" },
     tts: { model_id: "eleven_v3_conversational", voice_id: "voice_1234567890" },
     conversation: { client_events: ["audio", "interruption", "user_transcript"] },
     agent: {
-      language: "en",
+      language: "zh",
       disable_first_message_interruptions: false,
       prompt: {
         llm: "qwen36-35b-a3b",
@@ -33,6 +34,39 @@ const validAgent = (overrides = {}) => ({
 });
 
 describe("ElevenAgents provider", () => {
+  it("lists all available voices with pagination and safe metadata", async () => {
+    const fetchImpl = vi.fn(async (url) => {
+      const parsed = new URL(url);
+      if (!parsed.searchParams.get("next_page_token")) {
+        return {
+          ok: true,
+          json: async () => ({
+            voices: [{ voice_id: "voiceA12345678901234", name: "雪之乃", category: "cloned", labels: { language: "zh", secret: "omit" }, preview_url: "https://example.com/a.mp3" }],
+            has_more: true,
+            next_page_token: "page-2",
+          }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          voices: [{ voice_id: "voiceB12345678901234", name: "Hikari", category: "professional", labels: { language: "ja", accent: "tokyo" } }],
+          has_more: false,
+          next_page_token: null,
+        }),
+      };
+    });
+
+    await expect(listElevenVoices({ apiKey: "xi-private-key", fetchImpl })).resolves.toEqual([
+      { voiceId: "voiceB12345678901234", name: "Hikari", category: "professional", language: "ja", accent: "tokyo", previewUrl: "" },
+      { voiceId: "voiceA12345678901234", name: "雪之乃", category: "cloned", language: "zh", accent: "", previewUrl: "https://example.com/a.mp3" },
+    ]);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl.mock.calls[0][0]).toContain("/v2/voices");
+    expect(new URL(fetchImpl.mock.calls[0][0]).searchParams.get("voice_type")).toBe("personal");
+    expect(JSON.stringify(await listElevenVoices({ apiKey: "xi-private-key", fetchImpl: vi.fn(async () => ({ ok: true, json: async () => ({ voices: [], has_more: false }) })) }))).not.toContain("xi-private-key");
+  });
+
   it("pins and validates the required agent configuration", () => {
     const result = inspectElevenAgentConfig(validAgent());
     expect(result.ok).toBe(true);
@@ -62,8 +96,48 @@ describe("ElevenAgents provider", () => {
     const body = JSON.parse(patchCall[1].body);
     expect(body.conversation_config.agent.prompt).toMatchObject({ llm: "qwen36-35b-a3b", thinking_budget: 0, enable_reasoning_summary: false });
     expect(body.conversation_config.agent.prompt.custom_llm).toBeNull();
+    expect(body.conversation_config.agent.language).toBe("zh");
+    expect(Object.keys(body.conversation_config.language_presets).sort()).toEqual(["en", "ja"]);
     expect(body.conversation_config.tts).toMatchObject({ model_id: "eleven_v3_conversational", stability: 0.42 });
     expect(JSON.stringify(body)).not.toContain("secret");
+  });
+
+  it("validates and publishes a user-selected voice ID", async () => {
+    const existing = validAgent();
+    const nextVoiceId = "YyODrkDd1qMUj9jupJch";
+    const published = validAgent();
+    published.conversation_config.tts.voice_id = nextVoiceId;
+    const fetchImpl = vi.fn(async (url, options = {}) => {
+      if (url.endsWith(`/v1/voices/${nextVoiceId}`)) {
+        return { ok: true, json: async () => ({ voice_id: nextVoiceId, name: "雪之乃" }) };
+      }
+      if (url.endsWith("/v1/convai/llm/list")) {
+        return { ok: true, json: async () => ({ llms: [{ llm: "qwen36-35b-a3b", name: "Qwen3.6-35B-A3B" }] }) };
+      }
+      if (options.method === "PATCH") return { ok: true, json: async () => published };
+      const getCount = fetchImpl.mock.calls.filter(([calledUrl, calledOptions = {}]) => calledUrl.includes("/v1/convai/agents/") && calledOptions.method !== "PATCH").length;
+      return { ok: true, json: async () => (getCount === 1 ? existing : published) };
+    });
+
+    await expect(configureElevenAgent({ apiKey: "xi-private-key", agentId: existing.agent_id, voiceId: nextVoiceId, fetchImpl }))
+      .resolves.toMatchObject({ ok: true, voiceId: nextVoiceId });
+    const patchCall = fetchImpl.mock.calls.find(([, options = {}]) => options.method === "PATCH");
+    expect(JSON.parse(patchCall[1].body).conversation_config.tts.voice_id).toBe(nextVoiceId);
+  });
+
+  it("does not publish when the selected voice is unavailable", async () => {
+    const nextVoiceId = "missingVoice12345678";
+    const fetchImpl = vi.fn(async (url) => {
+      if (url.endsWith(`/v1/voices/${nextVoiceId}`)) return { ok: false, status: 404 };
+      if (url.endsWith("/v1/convai/llm/list")) {
+        return { ok: true, json: async () => ({ llms: [{ llm: "qwen36-35b-a3b", name: "Qwen3.6-35B-A3B" }] }) };
+      }
+      return { ok: true, json: async () => validAgent() };
+    });
+
+    await expect(configureElevenAgent({ apiKey: "xi-private-key", agentId: validAgent().agent_id, voiceId: nextVoiceId, fetchImpl }))
+      .rejects.toMatchObject({ code: "VOICE_NOT_FOUND" });
+    expect(fetchImpl.mock.calls.some(([, options = {}]) => options.method === "PATCH")).toBe(false);
   });
 
   it("does not publish or fall back when Qwen3.6 is unavailable", async () => {

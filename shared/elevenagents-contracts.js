@@ -10,7 +10,7 @@ export const ELEVENAGENTS_EXPECTED_CONFIG = Object.freeze({
   llmType: ELEVENAGENTS_QWEN_MODEL_ID,
   llmModelId: ELEVENAGENTS_QWEN_MODEL_ID,
   llmModelName: ELEVENAGENTS_QWEN_MODEL_NAME,
-  configVersion: "qwen-native-v1",
+  configVersion: "qwen-native-zh-default-v2",
   asrProvider: ELEVENAGENTS_ASR_PROVIDER,
   asrModelId: SCRIBE_MODEL_ID,
   ttsModelId: ELEVEN_V3_CONVERSATIONAL_MODEL_ID,
@@ -18,6 +18,7 @@ export const ELEVENAGENTS_EXPECTED_CONFIG = Object.freeze({
   interruptionEnabled: true,
   llmFallback: "disabled",
   ttsFallback: "disabled",
+  defaultLanguage: "zh",
   supportedLanguages: Object.freeze(["en", "ja", "zh"]),
 });
 
@@ -32,6 +33,8 @@ export const ELEVENAGENTS_ERROR_CODES = Object.freeze({
   AGENT_ACCESS_DENIED: "AGENT_ACCESS_DENIED",
   AGENT_CONFIG_MISMATCH: "AGENT_CONFIG_MISMATCH",
   VOICE_NOT_CONFIGURED: "VOICE_NOT_CONFIGURED",
+  VOICE_ID_INVALID: "VOICE_ID_INVALID",
+  VOICE_NOT_FOUND: "VOICE_NOT_FOUND",
   QWEN_MODEL_MISMATCH: "QWEN_MODEL_MISMATCH",
   TTS_MODEL_MISMATCH: "TTS_MODEL_MISMATCH",
   TURN_CONFIG_MISMATCH: "TURN_CONFIG_MISMATCH",
@@ -45,10 +48,13 @@ export const ELEVENAGENTS_ERROR_CODES = Object.freeze({
 });
 
 const AGENT_ID_PATTERN = /^(?:agent_|seng_)?[A-Za-z0-9_-]{10,128}$/;
+const VOICE_ID_PATTERN = /^[A-Za-z0-9_-]{10,128}$/;
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
 export const normalizeAgentId = (value) => String(value || "").trim();
 export const isValidAgentId = (value) => AGENT_ID_PATTERN.test(normalizeAgentId(value));
+export const normalizeVoiceId = (value) => String(value || "").trim();
+export const isValidVoiceId = (value) => VOICE_ID_PATTERN.test(normalizeVoiceId(value));
 export const normalizeRequestId = (value) => String(value || "").trim();
 export const isValidRequestId = (value) => REQUEST_ID_PATTERN.test(normalizeRequestId(value));
 

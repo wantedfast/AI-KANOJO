@@ -10,10 +10,16 @@ import { toSafeElevenAgentsError } from "../shared/elevenagents-contracts.js";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(directory, "..");
+const runtimeIconDirectory = app.isPackaged
+  ? path.join(process.resourcesPath, "assets", "icons")
+  : path.join(root, "assets", "icons");
+const appIconPath = path.join(runtimeIconDirectory, "app-icon-256.png");
+const trayIconPath = path.join(runtimeIconDirectory, "tray-icon-32.png");
 const smokeReportPath = process.env.AI_KANOJO_SMOKE_REPORT;
 const restoreReportPath = process.env.AI_KANOJO_RESTORE_REPORT;
 const duplicateProbePath = process.env.AI_KANOJO_DUPLICATE_PROBE;
 const smokeWorkspacePath = process.env.AI_KANOJO_SMOKE_WORKSPACE;
+app.setAppUserModelId("com.aikanojo.desktop");
 if (smokeReportPath || restoreReportPath || duplicateProbePath) {
   app.setPath("userData", smokeWorkspacePath || path.join(path.dirname(smokeReportPath || restoreReportPath || duplicateProbePath), "electron-smoke-user-data"));
 }
@@ -141,6 +147,7 @@ async function createWindow() {
   const saved = { ...persisted, width: 1040, height: 620 };
   window = new BrowserWindow({
     ...clampBounds(saved),
+    icon: appIconPath,
     transparent: true,
     frame: false,
     alwaysOnTop: true,
@@ -186,7 +193,7 @@ async function createWindow() {
 }
 
 function createTray() {
-  const icon = nativeImage.createFromPath(path.join(root, "public", "avatar", "8bit", "states", "completed.png")).resize({ width: 28, height: 28 });
+  const icon = nativeImage.createFromPath(trayIconPath).resize({ width: 16, height: 16, quality: "best" });
   tray = new Tray(icon);
   tray.setToolTip("AI-KANOJO · 罗照月");
   const refresh = () => tray.setContextMenu(Menu.buildFromTemplate([
@@ -223,6 +230,13 @@ function installIpc() {
       voiceId: String(settings.voiceId || "").trim().slice(0, 160),
       microphoneId: String(settings.microphoneId || "").trim().slice(0, 512),
     };
+    const currentVoiceId = String(store.get().settings?.voiceId || "").trim();
+    if (sanitized.voiceId !== currentVoiceId) {
+      await elevenAgentsService.setVoiceId({
+        voiceId: sanitized.voiceId,
+        signal: AbortSignal.timeout(20_000),
+      });
+    }
     await store.patch({ settings: sanitized });
     return sanitized;
   });
@@ -277,6 +291,7 @@ function installIpc() {
     return true;
   });
   ipcMain.handle("conversation:backend-status", () => elevenAgentsService.getStatus());
+  ipcMain.handle("voices:list", () => safeElevenAgentsCall(() => elevenAgentsService.listVoices({ signal: AbortSignal.timeout(20_000) })));
   ipcMain.handle("conversation:configure-agent", (_event, payload = {}) => safeElevenAgentsCall(() => elevenAgentsService.configureAgent({
     agentId: payload.agentId,
     signal: AbortSignal.timeout(20_000),
@@ -505,12 +520,23 @@ async function runSmokeCheck(reportPath) {
     })()
   `, true);
   window.webContents.send("ui:open-settings");
-  renderer.settingsVisible = await window.webContents.executeJavaScript(`
+  renderer.settingsLayout = await window.webContents.executeJavaScript(`
     (async () => {
       await new Promise((resolve) => setTimeout(resolve, 30));
-      return document.querySelector('[aria-label="设置与诊断"]') !== null;
+      const panel = document.querySelector('[aria-label="设置与诊断"]');
+      const selects = Array.from(panel?.querySelectorAll('.settings-grid select') || []).map((select) => {
+        const rect = select.getBoundingClientRect();
+        return { top: rect.top, height: rect.height };
+      });
+      return {
+        visible: Boolean(panel),
+        fieldCount: selects.length,
+        aligned: selects.length === 2 && Math.abs(selects[0].top - selects[1].top) <= 1 && Math.abs(selects[0].height - selects[1].height) <= 1,
+        selects,
+      };
     })()
   `, true);
+  renderer.settingsVisible = renderer.settingsLayout.visible;
   const image = await window.webContents.capturePage();
   await writeFile(smokeImagePath("electron-smoke"), image.toPNG());
   await writeFile(reportPath, `${JSON.stringify({

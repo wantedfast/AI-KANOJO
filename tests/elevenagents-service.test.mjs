@@ -49,6 +49,62 @@ describe("ElevenAgents service", () => {
     expect(store.get().elevenAgents.agentId).toBe(agentId);
   });
 
+  it("saves a selected voice only after the Agent update succeeds", async () => {
+    const oldVoiceId = "oldVoice1234567890ab";
+    const nextVoiceId = "YyODrkDd1qMUj9jupJch";
+    const store = createStore({
+      settings: { voiceId: oldVoiceId, microphoneId: "mic-1" },
+      elevenAgents: verifiedAgent,
+    });
+    const configureProvider = vi.fn(async () => ({ ...validResult, voiceId: nextVoiceId }));
+    const service = new ElevenAgentsService({
+      store,
+      getApiKey: () => "key",
+      now: () => 42,
+      provider: { configureElevenAgent: configureProvider },
+    });
+
+    await expect(service.setVoiceId({ voiceId: nextVoiceId })).resolves.toMatchObject({ voiceId: nextVoiceId, verifiedAt: 42 });
+    expect(configureProvider).toHaveBeenCalledWith(expect.objectContaining({ apiKey: "key", agentId, voiceId: nextVoiceId }));
+    expect(store.get().settings).toEqual({ voiceId: nextVoiceId, microphoneId: "mic-1" });
+    expect(store.get().elevenAgents).toMatchObject({ verifiedAgentId: agentId, configVersion, verifiedAt: 42 });
+  });
+
+  it("keeps the previous voice when the selected voice cannot be applied", async () => {
+    const oldVoiceId = "oldVoice1234567890ab";
+    const store = createStore({
+      settings: { voiceId: oldVoiceId, microphoneId: "mic-1" },
+      elevenAgents: verifiedAgent,
+    });
+    const service = new ElevenAgentsService({
+      store,
+      getApiKey: () => "key",
+      provider: {
+        configureElevenAgent: async () => {
+          throw Object.assign(new Error("voice unavailable"), { code: "VOICE_NOT_FOUND" });
+        },
+      },
+    });
+
+    await expect(service.setVoiceId({ voiceId: "missingVoice12345678" })).rejects.toMatchObject({ code: "VOICE_NOT_FOUND" });
+    expect(store.patch).not.toHaveBeenCalled();
+    expect(store.get().settings.voiceId).toBe(oldVoiceId);
+  });
+
+  it("returns the account voice catalog without exposing the API key", async () => {
+    const voices = [{ voiceId: "voiceA12345678901234", name: "雪之乃", category: "cloned", language: "zh", accent: "", previewUrl: "" }];
+    const listVoices = vi.fn(async () => voices);
+    const service = new ElevenAgentsService({
+      store: createStore({ elevenAgents: verifiedAgent }),
+      getApiKey: () => "xi-private-key",
+      provider: { listElevenVoices: listVoices },
+    });
+
+    await expect(service.listVoices()).resolves.toEqual(voices);
+    expect(listVoices).toHaveBeenCalledWith(expect.objectContaining({ apiKey: "xi-private-key" }));
+    expect(JSON.stringify(await service.listVoices())).not.toContain("xi-private-key");
+  });
+
   it("validates config before issuing a one-time WebRTC credential", async () => {
     const store = createStore({ elevenAgents: verifiedAgent });
     const createConversationToken = vi.fn(async () => ({ connectionType: "webrtc", conversationToken: "short", conversationId: "conv" }));

@@ -4,12 +4,15 @@ import {
   ElevenAgentsBackendError,
   isValidAgentId,
   isValidRequestId,
+  isValidVoiceId,
   normalizeAgentId,
   normalizeRequestId,
+  normalizeVoiceId,
 } from "../shared/elevenagents-contracts.js";
 import {
   configureElevenAgent,
   createElevenAgentsConversationToken,
+  listElevenVoices,
   validateElevenAgent,
 } from "./elevenagents-provider.js";
 
@@ -23,6 +26,7 @@ export class ElevenAgentsService {
     this.getApiKey = getApiKey;
     this.validateProvider = provider.validateElevenAgent || validateElevenAgent;
     this.configureProvider = provider.configureElevenAgent || configureElevenAgent;
+    this.listVoicesProvider = provider.listElevenVoices || listElevenVoices;
     this.createTokenProvider = provider.createConversationToken || createElevenAgentsConversationToken;
     this.active = new Map();
     this.usedRequestIds = new Set();
@@ -121,6 +125,48 @@ export class ElevenAgentsService {
     if (!agentId) throw new ElevenAgentsBackendError(CODES.AGENT_ID_MISSING, "ElevenAgent ID不能为空。");
     if (!isValidAgentId(agentId)) throw new ElevenAgentsBackendError(CODES.AGENT_ID_INVALID, "ElevenAgent ID 格式无效。");
     return this.configureAgent({ agentId });
+  }
+
+  async setVoiceId({ voiceId, signal } = {}) {
+    const normalized = normalizeVoiceId(voiceId);
+    if (!isValidVoiceId(normalized)) {
+      throw new ElevenAgentsBackendError(CODES.VOICE_ID_INVALID, "ElevenLabs Voice ID 格式无效。");
+    }
+    const agentId = this.getSavedAgentId();
+    const result = await this.configureProvider({
+      apiKey: this.requireApiKey(),
+      agentId,
+      voiceId: normalized,
+      signal,
+    });
+    if (!result?.ok || normalizeVoiceId(result.voiceId) !== normalized) {
+      throw new ElevenAgentsBackendError(CODES.AGENT_CONFIG_MISMATCH, "ElevenAgent 未能应用所选音色。");
+    }
+    const verifiedAt = this.now();
+    const current = this.store.get();
+    await this.store.patch({
+      settings: {
+        ...(current.settings || {}),
+        voiceId: normalized,
+      },
+      elevenAgents: {
+        ...(current.elevenAgents || {}),
+        agentId,
+        verifiedAgentId: agentId,
+        verifiedAt,
+        configVersion: EXPECTED.configVersion,
+      },
+    });
+    return {
+      voiceId: normalized,
+      agentId,
+      verifiedAt,
+      configVersion: EXPECTED.configVersion,
+    };
+  }
+
+  async listVoices({ signal } = {}) {
+    return this.listVoicesProvider({ apiKey: this.requireApiKey(), signal });
   }
 
   rememberRequestId(requestId) {

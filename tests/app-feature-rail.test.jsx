@@ -8,6 +8,48 @@ afterEach(() => {
 });
 
 describe("flat spectrum feature rail", () => {
+  it("loads the account voice catalog and lets the user select a voice", async () => {
+    const saveSettings = vi.fn(async (settings) => settings);
+    const listVoices = vi.fn(async () => ({ ok: true, value: [
+      { voiceId: "oldVoice1234567890ab", name: "Current", category: "cloned", language: "zh", accent: "", previewUrl: "" },
+      { voiceId: "YyODrkDd1qMUj9jupJch", name: "雪之乃", category: "cloned", language: "zh", accent: "", previewUrl: "" },
+    ] }));
+    const runtimeApi = {
+      isDesktop: false,
+      getBootstrap: async () => ({
+        settings: { voiceId: "oldVoice1234567890ab", microphoneId: "" },
+        chat: [],
+        credentials: { deepseek: true, elevenlabs: true },
+        locked: false,
+      }),
+      saveSettings,
+      listVoices,
+      onOpenSettings: (callback) => {
+        queueMicrotask(callback);
+        return () => {};
+      },
+    };
+    const { container } = render(<App runtimeApi={runtimeApi} />);
+    await act(async () => Promise.resolve());
+    await act(async () => Promise.resolve());
+
+    const voiceSelect = await screen.findByRole("combobox", { name: "ElevenLabs 音色" });
+    expect(listVoices).toHaveBeenCalledOnce();
+    expect(voiceSelect).toHaveValue("oldVoice1234567890ab");
+    expect(screen.getByRole("option", { name: /雪之乃/ })).toBeInTheDocument();
+    fireEvent.change(voiceSelect, { target: { value: "YyODrkDd1qMUj9jupJch" } });
+    fireEvent.click(screen.getByRole("button", { name: "应用并保存设置" }));
+    await act(async () => Promise.resolve());
+
+    expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({ voiceId: "YyODrkDd1qMUj9jupJch" }));
+    expect(screen.getByText("选择后将同步到语音 Agent，下次语音对话生效")).toBeInTheDocument();
+    expect(screen.queryByText("固定模型")).not.toBeInTheDocument();
+    expect(screen.queryByText("DeepSeek API Key")).not.toBeInTheDocument();
+    expect(screen.queryByText("ElevenLabs API Key")).not.toBeInTheDocument();
+    expect(container.querySelector(".lock-row")).not.toBeInTheDocument();
+    expect(container.querySelector(".diagnostic-bar")).not.toBeInTheDocument();
+  });
+
   it("renders three primary features, Codex, and Apple-style window controls", async () => {
     const { container } = render(<App />);
     await act(async () => Promise.resolve());

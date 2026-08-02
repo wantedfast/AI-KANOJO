@@ -4,7 +4,9 @@ import {
   ELEVENAGENTS_BASE_PROMPT,
   ElevenAgentsBackendError,
   isValidAgentId,
+  isValidVoiceId,
   normalizeAgentId,
+  normalizeVoiceId,
 } from "../shared/elevenagents-contracts.js";
 
 const API_BASE = "https://api.elevenlabs.io";
@@ -13,6 +15,7 @@ const providerError = (status, operation) => {
   if (status === 401) return new ElevenAgentsBackendError(CODES.ELEVENLABS_AUTH_FAILED, "ElevenLabs API Key 无效或已失效。");
   if (status === 403) return new ElevenAgentsBackendError(CODES.AGENT_ACCESS_DENIED, "当前 ElevenLabs Key 无权访问该 Agent。");
   if (status === 404 && operation === "agent") return new ElevenAgentsBackendError(CODES.AGENT_NOT_FOUND, "未找到指定的 ElevenAgent。");
+  if (status === 404 && operation === "voice") return new ElevenAgentsBackendError(CODES.VOICE_NOT_FOUND, "未找到该 ElevenLabs 音色，或当前账号无权使用。");
   if (status === 429) return new ElevenAgentsBackendError(CODES.PROVIDER_RATE_LIMITED, "ElevenLabs 请求过于频繁，请稍后重试。");
   if (status >= 500) return new ElevenAgentsBackendError(CODES.PROVIDER_UNAVAILABLE, "ElevenLabs 服务暂时不可用，请稍后重试。");
   const code = operation === "token" ? CODES.SESSION_TOKEN_FAILED : CODES.PROVIDER_UNAVAILABLE;
@@ -52,6 +55,53 @@ export const getElevenAgent = async ({ apiKey, agentId, signal, fetchImpl = fetc
   });
 };
 
+export const getElevenVoice = async ({ apiKey, voiceId, signal, fetchImpl = fetch }) => {
+  const normalized = normalizeVoiceId(voiceId);
+  if (!isValidVoiceId(normalized)) throw new ElevenAgentsBackendError(CODES.VOICE_ID_INVALID, "ElevenLabs Voice ID 格式无效。");
+  return requestJson({
+    url: `${API_BASE}/v1/voices/${encodeURIComponent(normalized)}`,
+    apiKey,
+    signal,
+    fetchImpl,
+    operation: "voice",
+  });
+};
+
+export const listElevenVoices = async ({ apiKey, signal, fetchImpl = fetch }) => {
+  const voices = new Map();
+  let nextPageToken = "";
+  for (let page = 0; page < 20; page += 1) {
+    const url = new URL(`${API_BASE}/v2/voices`);
+    url.searchParams.set("page_size", "100");
+    url.searchParams.set("sort", "name");
+    url.searchParams.set("sort_direction", "asc");
+    url.searchParams.set("voice_type", "personal");
+    url.searchParams.set("include_total_count", "false");
+    if (nextPageToken) url.searchParams.set("next_page_token", nextPageToken);
+    const payload = await requestJson({ url: url.toString(), apiKey, signal, fetchImpl, operation: "voice-list" });
+    for (const voice of Array.isArray(payload?.voices) ? payload.voices : []) {
+      const voiceId = normalizeVoiceId(voice?.voice_id);
+      if (!isValidVoiceId(voiceId)) continue;
+      const previewUrl = String(voice?.preview_url || "").trim();
+      voices.set(voiceId, {
+        voiceId,
+        name: String(voice?.name || voiceId).trim().slice(0, 160),
+        category: String(voice?.category || "").trim().slice(0, 40),
+        language: String(voice?.labels?.language || "").trim().slice(0, 24),
+        accent: String(voice?.labels?.accent || "").trim().slice(0, 80),
+        previewUrl: previewUrl.startsWith("https://") ? previewUrl.slice(0, 2048) : "",
+      });
+    }
+    if (!payload?.has_more) break;
+    const token = String(payload?.next_page_token || "").trim();
+    if (!token || token === nextPageToken) {
+      throw new ElevenAgentsBackendError(CODES.PROVIDER_UNAVAILABLE, "ElevenLabs 返回了无效的音色分页数据。");
+    }
+    nextPageToken = token;
+  }
+  return [...voices.values()].sort((left, right) => left.name.localeCompare(right.name, "en", { sensitivity: "base" }));
+};
+
 export const listElevenAgentLlms = async ({ apiKey, signal, fetchImpl = fetch }) => requestJson({
   url: `${API_BASE}/v1/convai/llm/list`,
   apiKey,
@@ -71,7 +121,7 @@ const resolveQwenModelId = (payload) => {
   return String(match.llm);
 };
 
-const buildConfiguredConversationConfig = (agent, modelId) => {
+const buildConfiguredConversationConfig = (agent, modelId, voiceId) => {
   const config = structuredClone(agent?.conversation_config || {});
   const prompt = { ...(config.agent?.prompt || {}) };
   prompt.custom_llm = null;
@@ -89,16 +139,40 @@ const buildConfiguredConversationConfig = (agent, modelId) => {
   });
   config.agent = {
     ...(config.agent || {}),
-    language: "en",
+    language: EXPECTED.defaultLanguage,
     disable_first_message_interruptions: false,
     prompt,
   };
+  const existingPresets = config.language_presets || {};
+  const buildLanguagePreset = (language) => {
+    const source = existingPresets[language] || existingPresets.zh || existingPresets.ja || {};
+    const preset = structuredClone(source);
+    preset.overrides = {
+      asr: null,
+      turn: null,
+      tts: null,
+      conversation: null,
+      ...(preset.overrides || {}),
+      agent: {
+        first_message: "",
+        language,
+        max_conversation_duration_message: null,
+        prompt: null,
+        ...(preset.overrides?.agent || {}),
+      },
+    };
+    preset.overrides.agent.language = language;
+    preset.first_message_translation ??= null;
+    preset.soft_timeout_translation ??= null;
+    return preset;
+  };
   config.language_presets = {
-    zh: config.language_presets?.zh || {},
-    ja: config.language_presets?.ja || {},
+    en: buildLanguagePreset("en"),
+    ja: buildLanguagePreset("ja"),
   };
   config.asr = { ...(config.asr || {}), provider: EXPECTED.asrProvider };
   const tts = { ...(config.tts || {}), model_id: EXPECTED.ttsModelId };
+  if (voiceId) tts.voice_id = voiceId;
   delete tts.fallback_enabled;
   delete tts.use_fallback;
   delete tts.fallback_model_id;
@@ -112,15 +186,20 @@ const buildConfiguredConversationConfig = (agent, modelId) => {
   return config;
 };
 
-export const configureElevenAgent = async ({ apiKey, agentId, signal, fetchImpl = fetch }) => {
+export const configureElevenAgent = async ({ apiKey, agentId, voiceId, signal, fetchImpl = fetch }) => {
   const normalized = normalizeAgentId(agentId);
   if (!isValidAgentId(normalized)) throw new ElevenAgentsBackendError(CODES.AGENT_ID_INVALID, "ElevenAgent ID is invalid.");
+  const normalizedVoiceId = voiceId == null ? "" : normalizeVoiceId(voiceId);
+  if (voiceId != null && !isValidVoiceId(normalizedVoiceId)) {
+    throw new ElevenAgentsBackendError(CODES.VOICE_ID_INVALID, "ElevenLabs Voice ID 格式无效。");
+  }
   const [agent, models] = await Promise.all([
     getElevenAgent({ apiKey, agentId: normalized, signal, fetchImpl }),
     listElevenAgentLlms({ apiKey, signal, fetchImpl }),
+    ...(normalizedVoiceId ? [getElevenVoice({ apiKey, voiceId: normalizedVoiceId, signal, fetchImpl })] : []),
   ]);
   const modelId = resolveQwenModelId(models);
-  const conversationConfig = buildConfiguredConversationConfig(agent, modelId);
+  const conversationConfig = buildConfiguredConversationConfig(agent, modelId, normalizedVoiceId);
   let response;
   try {
     response = await fetchImpl(`${API_BASE}/v1/convai/agents/${encodeURIComponent(normalized)}`, {
@@ -171,7 +250,7 @@ export const configureElevenAgent = async ({ apiKey, agentId, signal, fetchImpl 
   if (!validation.ok) {
     throw new ElevenAgentsBackendError(CODES.AGENT_CONFIG_MISMATCH, validation.issues[0]?.message || "The updated ElevenAgent configuration is invalid.");
   }
-  return { ...validation, agentId: normalized, modelId, configVersion: EXPECTED.configVersion };
+  return { ...validation, agentId: normalized, modelId, voiceId: validation.voiceId, configVersion: EXPECTED.configVersion };
 };
 
 const issue = (code, field, message) => ({ code, field, message });
@@ -196,6 +275,10 @@ export const inspectElevenAgentConfig = (agent) => {
     ...Object.keys(config.language_presets || {}).map(normalizeLanguage),
   ].filter(Boolean));
   const issues = [];
+
+  if (normalizeLanguage(config.agent?.language) !== EXPECTED.defaultLanguage) {
+    issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.agent.language", "Agent default language must be Chinese while English and Japanese remain automatic language presets."));
+  }
 
   if (prompt.llm !== EXPECTED.llmType) {
     issues.push(issue(CODES.QWEN_MODEL_MISMATCH, "conversation_config.agent.prompt.llm", `LLM must be ${EXPECTED.llmModelName}.`));
@@ -252,6 +335,7 @@ export const inspectElevenAgentConfig = (agent) => {
   return {
     ok: issues.length === 0,
     agentId: normalizeAgentId(agent?.agent_id),
+    voiceId: normalizeVoiceId(tts.voice_id),
     expectedModels: EXPECTED,
     issues,
   };

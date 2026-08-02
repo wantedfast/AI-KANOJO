@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld("kanojo", {
   getScribeToken: () => ipcRenderer.invoke("scribe:token"),
   streamReply,
   synthesize: (payload) => ipcRenderer.invoke("eleven:synthesize", payload),
+  listVoices: () => ipcRenderer.invoke("voices:list"),
   cancelActive: () => ipcRenderer.invoke("providers:cancel"),
   getConversationBackendStatus: () => ipcRenderer.invoke("conversation:backend-status"),
   configureElevenAgent: (payload = {}) => ipcRenderer.invoke("conversation:configure-agent", payload),

@@ -9,6 +9,7 @@
     "build": "vite build && node scripts/prepare-sites-build.mjs",
     "preview": "vite preview",
     "desktop": "npm run build && node node_modules/electron/cli.js .",
+    "package:win": "npm run build && electron-builder --win portable --x64",
     "test": "vitest run",
     "test:electron": "node tools/electron-smoke.mjs",
     "test:elevenagents:live": "node node_modules/electron/cli.js tools/elevenagents-backend-smoke.mjs",
@@ -19,7 +20,6 @@
     "@elevenlabs/client": "1.17.0",
     "@phosphor-icons/react": "2.1.10",
     "@vitejs/plugin-react": "5.0.4",
-    "electron": "43.2.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "vite": "6.4.2",
@@ -28,7 +28,44 @@
   "devDependencies": {
     "@testing-library/jest-dom": "6.6.3",
     "@testing-library/react": "16.3.0",
+    "electron": "43.2.0",
+    "electron-builder": "^26.0.12",
     "jsdom": "26.1.0",
+    "rcedit": "^5.0.2",
     "vitest": "3.2.4"
+  },
+  "build": {
+    "appId": "com.aikanojo.desktop",
+    "productName": "AI-KANOJO",
+    "artifactName": "AI-KANOJO-${version}-portable.${ext}",
+    "asar": true,
+    "compression": "store",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/client/**/*",
+      "electron/**/*",
+      "shared/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/icons",
+        "to": "assets/icons",
+        "filter": [
+          "app-icon-256.png",
+          "tray-icon-32.png"
+        ]
+      }
+    ],
+    "afterPack": "scripts/apply-windows-icon.mjs",
+    "win": {
+      "icon": "assets/icons/app-icon.ico",
+      "signAndEditExecutable": false,
+      "target": [
+        "portable"
+      ]
+    }
   }
 }

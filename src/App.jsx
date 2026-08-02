@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Lock,
-  LockOpen,
   Microphone,
   MusicNotes,
   ChatCircleDots,
@@ -26,6 +24,7 @@ const api = window.kanojo ?? {
   getScribeToken: async () => { throw new Error("桌面应用中才能连接 Scribe"); },
   streamReply: async () => { throw new Error("桌面应用中才能连接 DeepSeek"); },
   synthesize: async () => { throw new Error("桌面应用中才能连接 Eleven v3"); },
+  listVoices: async () => ({ ok: true, value: [] }),
   setLocked: async (locked) => locked,
   startWindowDrag: () => {},
   moveWindowDrag: () => {},
@@ -38,10 +37,6 @@ const api = window.kanojo ?? {
 
 const DEMO_PARTIAL = "今天也想和你聊";
 const DEMO_FINAL = "今天也想和你聊一会儿。";
-
-function ServicePill({ ok, children }) {
-  return <span className={`service-pill ${ok ? "is-ready" : "is-missing"}`}><i />{children}</span>;
-}
 
 function IconFeatureButton({ id, className = "", onClick, icon, label }) {
   return (
@@ -98,12 +93,13 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
   const [settings, setSettings] = useState({ demoMode: !api.isDesktop, voiceId: "", microphoneId: "" });
   const [credentials, setCredentials] = useState({ deepseek: false, elevenlabs: false });
   const [microphones, setMicrophones] = useState([]);
-  const [networkOnline, setNetworkOnline] = useState(navigator.onLine);
-  const [scribeStatus, setScribeStatus] = useState("idle");
+  const [voices, setVoices] = useState([]);
+  const [voiceCatalogState, setVoiceCatalogState] = useState("idle");
+  const [voiceCatalogError, setVoiceCatalogError] = useState("");
   const [locked, setLocked] = useState(false);
   const [minimized, setMinimized] = useState(false);
-  const [keys, setKeys] = useState({ deepseek: "", elevenlabs: "" });
   const [saveNote, setSaveNote] = useState("");
+  const [savingSettings, setSavingSettings] = useState(false);
   const [featureNotice, setFeatureNotice] = useState("");
   const scribeRef = useRef(null);
   const demoTimers = useRef([]);
@@ -145,6 +141,21 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
     setMicrophones(devices.filter((device) => device.kind === "audioinput"));
   };
 
+  const refreshVoices = async () => {
+    setVoiceCatalogState("loading");
+    setVoiceCatalogError("");
+    try {
+      const result = await api.listVoices?.();
+      if (!result?.ok) throw new Error(result?.error?.message || "无法读取 ElevenLabs 音色");
+      setVoices(Array.isArray(result.value) ? result.value : []);
+      setVoiceCatalogState("ready");
+    } catch (error) {
+      setVoices([]);
+      setVoiceCatalogState("error");
+      setVoiceCatalogError(error.message || "无法读取 ElevenLabs 音色");
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
     api.getBootstrap().then((data) => {
@@ -159,11 +170,7 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
     }).catch((error) => controller.fail(error.message));
     const unsubscribe = api.onOpenSettings?.(() => setPanel("settings"));
     const unsubscribeLocked = api.onLockedChanged?.(setLocked);
-    const handleOnline = () => setNetworkOnline(true);
-    const handleOffline = () => setNetworkOnline(false);
     const handleDeviceChange = () => refreshMicrophones().catch(() => setMicrophones([]));
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
     navigator.mediaDevices?.addEventListener?.("devicechange", handleDeviceChange);
     handleDeviceChange();
     return () => {
@@ -175,14 +182,13 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
       audioRef.current?.pause();
       clearTimeout(featureNoticeTimer.current);
       clearTimeout(continuousTimerRef.current);
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
       navigator.mediaDevices?.removeEventListener?.("devicechange", handleDeviceChange);
     };
   }, [controller, conversation]);
 
   useEffect(() => {
     if (panel === "settings") refreshMicrophones().catch(() => setMicrophones([]));
+    if (panel === "settings") refreshVoices();
     if (panel === "settings" && conversationSurface !== "none") {
       conversation.closeSurface?.(conversationSurface);
       setConversationSurface("none");
@@ -290,12 +296,10 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
           scribeRef.current = null;
           runReply(text);
         },
-        onStatus: setScribeStatus,
         onError: (message) => {
           scribe.stop();
           scribeRef.current = null;
           if (listeningId !== listeningRunRef.current || !sessionActiveRef.current) return;
-          setScribeStatus("error");
           controller.fail(message);
         },
       });
@@ -305,7 +309,6 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
       scribeRef.current?.stop();
       scribeRef.current = null;
       if (listeningId !== listeningRunRef.current || !sessionActiveRef.current || pausedRef.current) return;
-      setScribeStatus("error");
       controller.fail(error.message);
     }
   };
@@ -396,28 +399,21 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
   }), [api, controller, conversation, conversationSurface]);
 
   const savePreferences = async () => {
+    if (savingSettings) return;
+    setSavingSettings(true);
+    setSaveNote("正在校验并应用音色…");
     try {
       const next = await api.saveSettings(settings);
       setSettings((current) => ({ ...current, ...next, demoMode: !api.isDesktop }));
-      let status = credentials;
-      if (keys.deepseek || keys.elevenlabs) {
-        status = await api.saveCredentials(keys);
-        setCredentials(status);
-        setKeys({ deepseek: "", elevenlabs: "" });
-      }
-      const ready = !api.isDesktop || (status.deepseek && status.elevenlabs && next.voiceId);
-      setSaveNote(ready ? "已安全保存，可以开始对话" : "仍需填写缺失的配置");
+      const ready = !api.isDesktop || (credentials.deepseek && credentials.elevenlabs && next.voiceId);
+      setSaveNote(ready ? "音色已应用，可以开始对话" : "仍需填写缺失的配置");
       if (ready) setTimeout(() => setPanel("compact"), 700);
     } catch (error) {
       setSaveNote(error.message || "保存失败");
+    } finally {
+      setSavingSettings(false);
     }
     setTimeout(() => setSaveNote(""), 1800);
-  };
-
-  const setWindowLocked = async () => {
-    const next = !locked;
-    await api.setLocked(next);
-    setLocked(next);
   };
 
   const startWindowDrag = (event) => {
@@ -606,27 +602,22 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
         {panel === "settings" && (
           <section className="glass-panel settings-panel" aria-label="设置与诊断">
             <header className="panel-header">
-              <div><span className="eyebrow">AI CORE</span><h1>连接与偏好</h1></div>
+              <div><span className="eyebrow">VOICE</span><h1>音色与麦克风</h1></div>
               <button type="button" className="text-button" onClick={() => setPanel("compact")}>完成</button>
             </header>
 
             <div className="settings-grid">
-              <label><span>固定模型</span><input value="文字 DeepSeek V4 Flash · 语音 Qwen3.6 / Scribe v2 / Eleven v3 Conversational" readOnly /></label>
-              <label><span>DeepSeek API Key</span><input type="password" value={keys.deepseek} onChange={(event) => setKeys({ ...keys, deepseek: event.target.value })} placeholder={credentials.deepseek ? "已保存在系统保护区" : "sk-…"} autoComplete="off" /></label>
-              <label><span>ElevenLabs API Key</span><input type="password" value={keys.elevenlabs} onChange={(event) => setKeys({ ...keys, elevenlabs: event.target.value })} placeholder={credentials.elevenlabs ? "已保存在系统保护区" : "xi-…"} autoComplete="off" /></label>
-              <label><span>ElevenLabs Voice ID</span><input value={settings.voiceId} onChange={(event) => setSettings({ ...settings, voiceId: event.target.value })} placeholder="正式语音所需" /></label>
+              <div className="voice-id-setting">
+                <label><span>ElevenLabs 音色</span><select aria-label="ElevenLabs 音色" value={settings.voiceId} onChange={(event) => setSettings({ ...settings, voiceId: event.target.value })} disabled={voiceCatalogState === "loading"}>
+                  {!settings.voiceId && <option value="">{voiceCatalogState === "loading" ? "正在加载音色…" : "请选择音色"}</option>}
+                  {settings.voiceId && !voices.some((voice) => voice.voiceId === settings.voiceId) && <option value={settings.voiceId}>当前音色 · {settings.voiceId}</option>}
+                  {voices.map((voice) => <option value={voice.voiceId} key={voice.voiceId}>{voice.name} · {voice.language || "未标注语言"} · {voice.category || "voice"}</option>)}
+                </select></label>
+                <div className="voice-setting-meta"><small className={`settings-hint ${voiceCatalogState === "error" ? "is-error" : ""}`}>{voiceCatalogState === "error" ? voiceCatalogError : "选择后将同步到语音 Agent，下次语音对话生效"}</small><button type="button" className="voice-refresh-button" onClick={refreshVoices} disabled={voiceCatalogState === "loading"}>{voiceCatalogState === "loading" ? "加载中" : "刷新音色"}</button></div>
+              </div>
               <label><span>麦克风</span><select value={settings.microphoneId} onChange={(event) => setSettings({ ...settings, microphoneId: event.target.value })}><option value="">系统默认麦克风</option>{microphones.map((device, index) => <option value={device.deviceId} key={device.deviceId}>{device.label || `麦克风 ${index + 1}`}</option>)}</select></label>
-              <button type="button" className="lock-row" onClick={setWindowLocked}><span><strong>{locked ? "位置已锁定" : "位置可拖动"}</strong><small>锁定不影响角色和按钮点击</small></span>{locked ? <Lock weight="fill" /> : <LockOpen weight="light" />}</button>
             </div>
-
-            <div className="diagnostic-bar">
-              <ServicePill ok={credentials.deepseek}>DeepSeek Key</ServicePill>
-              <ServicePill ok={credentials.elevenlabs}>ElevenLabs Key</ServicePill>
-              <ServicePill ok={microphones.length > 0}>{microphones.length ? "麦克风已发现" : "未发现麦克风"}</ServicePill>
-              <ServicePill ok={scribeStatus === "listening"}>{scribeStatus === "listening" ? "识别中" : scribeStatus === "error" ? "识别异常" : "识别待机"}</ServicePill>
-              <ServicePill ok={networkOnline}>{networkOnline ? "网络在线" : "网络离线"}</ServicePill>
-            </div>
-            <button type="button" className="primary-button" onClick={savePreferences}>{saveNote || "保存设置"}</button>
+            <button type="button" className="primary-button" onClick={savePreferences} disabled={savingSettings}>{saveNote || "应用并保存设置"}</button>
           </section>
         )}
       </section>
