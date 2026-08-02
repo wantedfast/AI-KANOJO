@@ -44,7 +44,7 @@ const createHarness = ({ credential, sendTimeoutMs = 8000, createCaptionTranscri
   };
   const api = {
     getConversationBackendStatus: vi.fn(async () => configuredStatus),
-    configureElevenAgent: vi.fn(async () => ({ ok: true, value: { modelId: "deepseek-v4-flash" } })),
+    configureElevenAgent: vi.fn(async () => ({ ok: true, value: { modelId: "qwen36-35b-a3b" } })),
     createConversationCredential: vi.fn(async () => ({
       ok: true,
       value: { connectionType: "webrtc", conversationToken: "voice-token" },
@@ -78,9 +78,8 @@ const createHarness = ({ credential, sendTimeoutMs = 8000, createCaptionTranscri
 
 describe("ElevenAgents renderer adapter", () => {
   it("normalizes stale Custom LLM and microphone failures into actionable errors", () => {
-    expect(normalizeConversationClientError("Server error: unknown server")).toContain("ElevenAgents");
-    expect(normalizeConversationClientError("Server error: unknown server")).not.toContain("DeepSeek");
-    expect(normalizeConversationClientError("custom_llm_error: Failed to generate response from custom LLM")).toContain("原生 Qwen");
+    expect(normalizeConversationClientError("Server error: unknown server")).toContain("Qwen");
+    expect(normalizeConversationClientError("custom_llm_error: Failed to generate response from custom LLM")).toContain("Qwen");
     expect(normalizeConversationClientError(new DOMException("Permission denied", "NotAllowedError"))).toContain("麦克风");
   });
 
@@ -94,7 +93,7 @@ describe("ElevenAgents renderer adapter", () => {
   it("mutes Agent audio and uses standalone Eleven v3 when selected", async () => {
     const playStandaloneAudio = vi.fn(async () => {});
     const { adapter, api, session, getCallbacks } = createHarness({ playStandaloneAudio });
-    adapter.startVoice("mic-1", { voiceId: "YyODrkDd1qMUj9jupJch", voiceMode: "expressive" });
+    adapter.startVoice("mic-1", { voiceId: "YyODrkDd1qMUj9jupJch", ttsModelId: "eleven_v3" });
     await vi.waitFor(() => expect(session.setVolume).toHaveBeenCalledWith({ volume: 0 }));
 
     getCallbacks().onVadScore({ vadScore: 0.8 });
@@ -114,7 +113,7 @@ describe("ElevenAgents renderer adapter", () => {
   it("ignores punctuation-only microphone turns and their unsolicited Agent reply", async () => {
     const playStandaloneAudio = vi.fn(async () => {});
     const { adapter, api, session, getCallbacks } = createHarness({ playStandaloneAudio });
-    adapter.startVoice("mic-1", { voiceId: "YyODrkDd1qMUj9jupJch", voiceMode: "expressive" });
+    adapter.startVoice("mic-1", { voiceId: "YyODrkDd1qMUj9jupJch", ttsModelId: "eleven_v3" });
     await vi.waitFor(() => expect(session.setVolume).toHaveBeenCalledWith({ volume: 0 }));
 
     getCallbacks().onMessage({ role: "user", message: "..." });
@@ -145,23 +144,6 @@ describe("ElevenAgents renderer adapter", () => {
     });
   });
 
-  it("does not erase a lexical partial when the Agent emits punctuation-only user text", async () => {
-    const { adapter, conversationClient, room, getCallbacks } = createHarness();
-    adapter.startVoice();
-    await vi.waitFor(() => expect(conversationClient.startSession).toHaveBeenCalledOnce());
-
-    room.emit("transcriptionReceived", [{ id: "partial", text: "still speaking", final: false }], room.localParticipant);
-    const before = adapter.getSnapshot();
-    getCallbacks().onMessage({ role: "user", message: "..." });
-
-    expect(adapter.getSnapshot()).toMatchObject({
-      phase: "transcribing",
-      activeTurnId: before.activeTurnId,
-      transcriptPartial: "still speaking",
-    });
-    expect(adapter.getSnapshot().voiceTurns).toHaveLength(1);
-  });
-
   it("opens voice with a WebRTC token and maps transcript, reply, pause and resume", async () => {
     const { adapter, api, conversationClient, session, getCallbacks } = createHarness();
     adapter.startVoice("microphone-123");
@@ -186,85 +168,6 @@ describe("ElevenAgents renderer adapter", () => {
     adapter.resumeVoice();
     expect(session.setMicMuted).toHaveBeenCalledWith(false);
     expect(adapter.getSnapshot().phase).toBe("listening");
-  });
-
-  it("keeps the microphone open while realtime Agent audio is speaking", async () => {
-    const { adapter, conversationClient, session, getCallbacks } = createHarness();
-    adapter.startVoice("mic-1", { voiceId: "voice", voiceMode: "realtime" });
-    await vi.waitFor(() => expect(conversationClient.startSession).toHaveBeenCalledOnce());
-
-    getCallbacks().onMessage({ role: "user", message: "hello" });
-    getCallbacks().onModeChange({ mode: "speaking" });
-
-    expect(adapter.getSnapshot()).toMatchObject({ phase: "speaking", voiceState: "Speaking" });
-    expect(session.setMicMuted).not.toHaveBeenCalledWith(true);
-  });
-
-  it("stops the old realtime reply and returns to listening on interruption", async () => {
-    const { adapter, conversationClient, getCallbacks } = createHarness();
-    adapter.startVoice("mic-1", { voiceId: "voice", voiceMode: "realtime" });
-    await vi.waitFor(() => expect(conversationClient.startSession).toHaveBeenCalledOnce());
-
-    getCallbacks().onMessage({ role: "user", message: "hello" });
-    getCallbacks().onMessage({ role: "agent", message: "old reply" });
-    getCallbacks().onModeChange({ mode: "speaking" });
-    expect(adapter.getSnapshot()).toMatchObject({ phase: "speaking", reply: "old reply" });
-
-    getCallbacks().onInterruption({ event_id: "evt-1" });
-
-    expect(adapter.getSnapshot()).toMatchObject({
-      phase: "listening",
-      voiceState: "Listening",
-      reply: "",
-      activeTurnId: "",
-    });
-
-    getCallbacks().onAgentResponseCorrection({
-      event_id: "evt-1-correction",
-      original_agent_response: "old reply",
-      corrected_agent_response: "heard before interruption",
-    });
-
-    expect(adapter.getSnapshot().reply).toBe("");
-    expect(adapter.getSnapshot().messages.at(-1).content).toBe("heard before interruption");
-  });
-
-  it("ignores punctuation noise without detaching a realtime speaking turn", async () => {
-    const { adapter, conversationClient, getCallbacks } = createHarness();
-    adapter.startVoice("mic-1", { voiceId: "voice", voiceMode: "realtime" });
-    await vi.waitFor(() => expect(conversationClient.startSession).toHaveBeenCalledOnce());
-
-    getCallbacks().onMessage({ role: "user", message: "hello" });
-    getCallbacks().onMessage({ role: "agent", message: "current reply" });
-    getCallbacks().onModeChange({ mode: "speaking" });
-    const before = adapter.getSnapshot();
-
-    getCallbacks().onMessage({ role: "user", message: "..." });
-
-    expect(adapter.getSnapshot()).toMatchObject({
-      phase: "speaking",
-      activeTurnId: before.activeTurnId,
-      reply: "current reply",
-      transcript: "hello",
-    });
-  });
-
-  it("replaces the last assistant text when the SDK sends a response correction", async () => {
-    const { adapter, api, conversationClient, getCallbacks } = createHarness();
-    adapter.startVoice("mic-1", { voiceId: "voice", voiceMode: "realtime" });
-    await vi.waitFor(() => expect(conversationClient.startSession).toHaveBeenCalledOnce());
-
-    getCallbacks().onMessage({ role: "user", message: "hello" });
-    getCallbacks().onMessage({ role: "agent", message: "old reply" });
-    getCallbacks().onAgentResponseCorrection({
-      event_id: "evt-2",
-      original_agent_response: "old reply",
-      corrected_agent_response: "corrected reply",
-    });
-
-    expect(adapter.getSnapshot().reply).toBe("corrected reply");
-    expect(adapter.getSnapshot().messages.at(-1).content).toBe("corrected reply");
-    expect(api.saveChat).toHaveBeenCalled();
   });
 
   it("does not let the previous playback completion erase a fast second turn", async () => {
@@ -346,7 +249,7 @@ describe("ElevenAgents renderer adapter", () => {
     }
   });
 
-  it("uses the realtime Scribe caption sidecar for partial text and keeps it live during Agent playback", async () => {
+  it("uses the realtime Scribe caption sidecar for partial text and mutes it during playback", async () => {
     vi.stubGlobal("MediaStream", class {
       constructor(tracks) { this.tracks = tracks; }
       getTracks() { return this.tracks; }
@@ -362,10 +265,9 @@ describe("ElevenAgents renderer adapter", () => {
       captionCallbacks = options;
       return captionTranscriber;
     });
-    const playStandaloneAudio = vi.fn(async () => {});
-    const { adapter, api, conversationClient, getCallbacks } = createHarness({ createCaptionTranscriber, playStandaloneAudio });
+    const { adapter, api, conversationClient, getCallbacks } = createHarness({ createCaptionTranscriber });
     api.getScribeToken = vi.fn(async () => "scribe-token");
-    adapter.startVoice("mic-1", { voiceId: "voice", voiceMode: "realtime" });
+    adapter.startVoice("mic-1");
     await vi.waitFor(() => expect(conversationClient.startSession).toHaveBeenCalledOnce());
     await vi.waitFor(() => expect(captionTranscriber.start).toHaveBeenCalledOnce());
     expect(createCaptionTranscriber).toHaveBeenCalledWith(expect.objectContaining({ token: "scribe-token", deviceId: "mic-1" }));
@@ -373,42 +275,15 @@ describe("ElevenAgents renderer adapter", () => {
     captionCallbacks.onPartial("real time");
     expect(adapter.getSnapshot()).toMatchObject({ phase: "transcribing", transcriptPartial: "real time" });
     captionCallbacks.onCommitted("real time caption");
+    expect(adapter.getSnapshot()).toMatchObject({ phase: "sending", transcript: "real time caption" });
     getCallbacks().onMessage({ role: "user", message: "real time caption" });
     getCallbacks().onMessage({ role: "agent", message: "reply" });
     getCallbacks().onModeChange({ mode: "speaking" });
-    await vi.waitFor(() => expect(captionTranscriber.setMuted).toHaveBeenCalledWith(false));
-    expect(captionTranscriber.setMuted).not.toHaveBeenCalledWith(true);
+    expect(captionTranscriber.setMuted).toHaveBeenCalledWith(true);
+    getCallbacks().onModeChange({ mode: "listening" });
+    expect(captionTranscriber.setMuted).toHaveBeenCalledWith(false);
     adapter.endVoice();
     expect(captionTranscriber.stop).toHaveBeenCalledOnce();
-  });
-
-  it("keeps a late-starting realtime caption sidecar unmuted during Agent playback", async () => {
-    vi.stubGlobal("MediaStream", class {
-      constructor(tracks) { this.tracks = tracks; }
-      getTracks() { return this.tracks; }
-      getAudioTracks() { return this.tracks; }
-    });
-    let finishCaptionStart;
-    const captionTranscriber = {
-      start: vi.fn(() => new Promise((resolve) => { finishCaptionStart = resolve; })),
-      stop: vi.fn(),
-      setMuted: vi.fn(),
-    };
-    const { adapter, api, conversationClient, getCallbacks } = createHarness({
-      createCaptionTranscriber: vi.fn(() => captionTranscriber),
-    });
-    api.getScribeToken = vi.fn(async () => "scribe-token");
-    adapter.startVoice("mic-1", { voiceId: "voice", voiceMode: "realtime" });
-    await vi.waitFor(() => expect(conversationClient.startSession).toHaveBeenCalledOnce());
-    await vi.waitFor(() => expect(captionTranscriber.start).toHaveBeenCalledOnce());
-
-    getCallbacks().onMessage({ role: "user", message: "hello" });
-    getCallbacks().onMessage({ role: "agent", message: "reply" });
-    getCallbacks().onModeChange({ mode: "speaking" });
-    finishCaptionStart();
-
-    await vi.waitFor(() => expect(captionTranscriber.setMuted).toHaveBeenCalledWith(false));
-    expect(captionTranscriber.setMuted).not.toHaveBeenCalledWith(true);
   });
 
   it("preserves a final transcript when send confirmation times out and retries it", async () => {
@@ -471,7 +346,7 @@ describe("ElevenAgents renderer adapter", () => {
     getCallbacks().onError("custom_llm_error: Failed to generate response from custom LLM");
     expect(adapter.getSnapshot()).toMatchObject({
       phase: "error",
-      error: expect.stringContaining("原生 Qwen"),
+      error: expect.stringContaining("Qwen"),
     });
   });
 

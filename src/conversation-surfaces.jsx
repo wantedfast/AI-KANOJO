@@ -10,7 +10,6 @@ import {
   Waveform,
   X,
 } from "@phosphor-icons/react";
-import { VOICE_MODE_EXPRESSIVE } from "../shared/model-contracts.js";
 
 const PHASE_LABELS = {
   idle: "语音待机",
@@ -108,10 +107,9 @@ export function TextChatPanel({ snapshot, onClose, onSend }) {
   );
 }
 
-export function VoiceConversationPopover({ snapshot, voiceMode, portraitSrc, onPause, onResume, onEnd, onRetry }) {
+export function VoiceConversationPopover({ snapshot, portraitSrc, onPause, onResume, onEnd, onRetry }) {
   const paused = snapshot.phase === "paused";
   const recoverable = paused || snapshot.phase === "error";
-  const expressiveMode = voiceMode === VOICE_MODE_EXPRESSIVE;
   const turns = snapshot.voiceTurns || [];
   const currentTurn = turns.find((turn) => turn.turnId === snapshot.activeTurnId) || turns.at(-1);
   const currentTranscript = currentTurn?.transcriptFinal
@@ -123,15 +121,12 @@ export function VoiceConversationPopover({ snapshot, voiceMode, portraitSrc, onP
     ? "正在思考…"
     : snapshot.phase === "speaking" ? "正在回复…" : "");
   return (
-    <section className={`conversation-panel voice-popover phase-${snapshot.phase}`} aria-label="语音对话" data-testid="voice-popover">
+    <section className={`conversation-panel voice-popover phase-${snapshot.phase}`} aria-label="简短语音对话" data-testid="voice-popover">
       <header className="voice-title-row">
         <strong>语音对话</strong>
         <Waveform weight="light" aria-hidden="true" />
       </header>
-      <div className="voice-mode-copy">
-        <strong>{expressiveMode ? "高表现力 · 轮流对话" : "实时对话 · 可打断（推荐）"}</strong>
-        <span>{expressiveMode ? "播放期间会暂停麦克风，需轮流说话。" : "她说话时也会继续听你，可以直接插话。"}</span>
-      </div>
+
       <header className="voice-status-row">
         <span className="voice-status-icon" aria-hidden="true"><Record weight="duotone" /></span>
         <strong>{PHASE_LABELS[snapshot.phase] ?? PHASE_LABELS.idle}</strong>

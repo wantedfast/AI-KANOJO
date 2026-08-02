@@ -42,8 +42,6 @@ describe("provider contracts", () => {
   });
 
   it("parses DeepSeek SSE deltas", async () => {
-    expect(LUO_ZHAOYUE_PERSONA).toContain("根据用户的问题决定回答长度和深度");
-    expect(LUO_ZHAOYUE_PERSONA).not.toContain("简短");
     const body = [
       "data: {\"choices\":[{\"delta\":{\"content\":\"你\"}}]}",
       "data: {\"choices\":[{\"delta\":{\"content\":\"好\"}}]}",

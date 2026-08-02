@@ -12,26 +12,16 @@ import {
 
 const API_BASE = "https://api.elevenlabs.io";
 
-const issue = (code, field, message) => ({ code, field, message });
-
-const normalizeLanguage = (value) => {
-  const language = String(value || "").trim().toLowerCase().replace("_", "-");
-  if (language === "zh-cn" || language === "zh-hans" || language === "cmn") return "zh";
-  if (language === "ja-jp") return "ja";
-  if (language === "en-us" || language === "en-gb") return "en";
-  return language;
-};
-
 const providerError = (status, operation) => {
-  if (status === 401) return new ElevenAgentsBackendError(CODES.ELEVENLABS_AUTH_FAILED, "ElevenLabs API key is invalid or expired.");
-  if (status === 403) return new ElevenAgentsBackendError(CODES.AGENT_ACCESS_DENIED, "The current ElevenLabs key cannot access this agent.");
-  if (status === 404 && operation === "agent") return new ElevenAgentsBackendError(CODES.AGENT_NOT_FOUND, "The requested ElevenAgent was not found.");
-  if (status === 404 && operation === "voice") return new ElevenAgentsBackendError(CODES.VOICE_NOT_FOUND, "The requested ElevenLabs voice was not found.");
-  if (status === 429) return new ElevenAgentsBackendError(CODES.PROVIDER_RATE_LIMITED, "ElevenLabs requests are being rate limited.");
-  if (status >= 500) return new ElevenAgentsBackendError(CODES.PROVIDER_UNAVAILABLE, "ElevenLabs is temporarily unavailable.");
+  if (status === 401) return new ElevenAgentsBackendError(CODES.ELEVENLABS_AUTH_FAILED, "ElevenLabs API Key 无效或已失效。");
+  if (status === 403) return new ElevenAgentsBackendError(CODES.AGENT_ACCESS_DENIED, "当前 ElevenLabs Key 无权访问该 Agent。");
+  if (status === 404 && operation === "agent") return new ElevenAgentsBackendError(CODES.AGENT_NOT_FOUND, "未找到指定的 ElevenAgent。");
+  if (status === 404 && operation === "voice") return new ElevenAgentsBackendError(CODES.VOICE_NOT_FOUND, "未找到该 ElevenLabs 音色，或当前账号无权使用。");
+  if (status === 429) return new ElevenAgentsBackendError(CODES.PROVIDER_RATE_LIMITED, "ElevenLabs 请求过于频繁，请稍后重试。");
+  if (status >= 500) return new ElevenAgentsBackendError(CODES.PROVIDER_UNAVAILABLE, "ElevenLabs 服务暂时不可用，请稍后重试。");
   const code = operation === "token" ? CODES.SESSION_TOKEN_FAILED : CODES.PROVIDER_UNAVAILABLE;
-  if (operation === "update-agent") return new ElevenAgentsBackendError(CODES.PROVIDER_UNAVAILABLE, "Unable to update the ElevenAgent configuration.");
-  return new ElevenAgentsBackendError(code, operation === "token" ? "Unable to create an ElevenAgents conversation credential." : "Unable to read the ElevenAgent configuration.");
+  if (operation === "update-agent") return new ElevenAgentsBackendError(CODES.PROVIDER_UNAVAILABLE, "无法更新 ElevenAgent 配置。");
+  return new ElevenAgentsBackendError(code, operation === "token" ? "无法创建 ElevenAgents 会话凭证。" : "无法读取 ElevenAgent 配置。");
 };
 
 const requestJson = async ({ url, apiKey, signal, fetchImpl, operation }) => {
@@ -43,28 +33,34 @@ const requestJson = async ({ url, apiKey, signal, fetchImpl, operation }) => {
       signal,
     });
   } catch (error) {
-    if (error?.name === "AbortError") throw new ElevenAgentsBackendError(CODES.REQUEST_CANCELLED, "Request cancelled.");
-    throw new ElevenAgentsBackendError(CODES.PROVIDER_UNAVAILABLE, "ElevenLabs is temporarily unavailable.");
+    if (error?.name === "AbortError") throw new ElevenAgentsBackendError(CODES.REQUEST_CANCELLED, "请求已取消。");
+    throw new ElevenAgentsBackendError(CODES.PROVIDER_UNAVAILABLE, "ElevenLabs 服务暂时不可用，请稍后重试。");
   }
   if (!response.ok) throw providerError(response.status, operation);
   try {
     return await response.json();
   } catch {
-    throw new ElevenAgentsBackendError(operation === "token" ? CODES.SESSION_TOKEN_FAILED : CODES.PROVIDER_UNAVAILABLE, "ElevenLabs returned invalid JSON.");
+    throw new ElevenAgentsBackendError(operation === "token" ? CODES.SESSION_TOKEN_FAILED : CODES.PROVIDER_UNAVAILABLE, "ElevenLabs 返回了无法解析的响应。");
   }
 };
 
 export const getElevenAgent = async ({ apiKey, agentId, branchId = "", signal, fetchImpl = fetch }) => {
   const normalized = normalizeAgentId(agentId);
-  if (!isValidAgentId(normalized)) throw new ElevenAgentsBackendError(CODES.AGENT_ID_INVALID, "ElevenAgent ID is invalid.");
+  if (!isValidAgentId(normalized)) throw new ElevenAgentsBackendError(CODES.AGENT_ID_INVALID, "ElevenAgent ID 格式无效。");
   const url = new URL(`${API_BASE}/v1/convai/agents/${encodeURIComponent(normalized)}`);
   if (branchId) url.searchParams.set("branch_id", String(branchId));
-  return requestJson({ url: url.toString(), apiKey, signal, fetchImpl, operation: "agent" });
+  return requestJson({
+    url: url.toString(),
+    apiKey,
+    signal,
+    fetchImpl,
+    operation: "agent",
+  });
 };
 
 export const getElevenVoice = async ({ apiKey, voiceId, signal, fetchImpl = fetch }) => {
   const normalized = normalizeVoiceId(voiceId);
-  if (!isValidVoiceId(normalized)) throw new ElevenAgentsBackendError(CODES.VOICE_ID_INVALID, "ElevenLabs voice ID is invalid.");
+  if (!isValidVoiceId(normalized)) throw new ElevenAgentsBackendError(CODES.VOICE_ID_INVALID, "ElevenLabs Voice ID 格式无效。");
   return requestJson({
     url: `${API_BASE}/v1/voices/${encodeURIComponent(normalized)}`,
     apiKey,
@@ -102,7 +98,7 @@ export const listElevenVoices = async ({ apiKey, signal, fetchImpl = fetch }) =>
     if (!payload?.has_more) break;
     const token = String(payload?.next_page_token || "").trim();
     if (!token || token === nextPageToken) {
-      throw new ElevenAgentsBackendError(CODES.PROVIDER_UNAVAILABLE, "ElevenLabs returned invalid voice pagination data.");
+      throw new ElevenAgentsBackendError(CODES.PROVIDER_UNAVAILABLE, "ElevenLabs 返回了无效的音色分页数据。");
     }
     nextPageToken = token;
   }
@@ -144,16 +140,12 @@ const buildConfiguredConversationConfig = (agent, modelId, voiceId) => {
     enable_reasoning_summary: false,
     backup_llm_config: { preference: EXPECTED.llmFallback },
   });
-
-  const configuredAgent = {
+  config.agent = {
     ...(config.agent || {}),
     language: EXPECTED.defaultLanguage,
     disable_first_message_interruptions: false,
     prompt,
   };
-  delete configuredAgent.llm;
-  config.agent = configuredAgent;
-
   const existingPresets = config.language_presets || {};
   const buildLanguagePreset = (language) => {
     const source = existingPresets[language] || existingPresets.zh || existingPresets.ja || {};
@@ -177,14 +169,11 @@ const buildConfiguredConversationConfig = (agent, modelId, voiceId) => {
     preset.soft_timeout_translation ??= null;
     return preset;
   };
-
   config.language_presets = {
     en: buildLanguagePreset("en"),
     ja: buildLanguagePreset("ja"),
   };
   config.asr = { ...(config.asr || {}), provider: EXPECTED.asrProvider };
-  config.vad = { ...(config.vad || {}), background_voice_detection: false };
-
   const tts = { ...(config.tts || {}), model_id: EXPECTED.ttsModelId };
   if (voiceId) tts.voice_id = voiceId;
   delete tts.fallback_enabled;
@@ -192,35 +181,20 @@ const buildConfiguredConversationConfig = (agent, modelId, voiceId) => {
   delete tts.fallback_model_id;
   delete tts.fallback_model_ids;
   config.tts = tts;
-
   config.turn = {
     ...(config.turn || {}),
     turn_eagerness: EXPECTED.turnEagerness,
     turn_timeout: EXPECTED.turnTimeoutSeconds,
     silence_end_call_timeout: EXPECTED.silenceEndCallTimeoutSeconds,
-    turn_model: EXPECTED.turnMode,
-    mode: "turn",
-    interruption_ignore_terms: [],
-    interruption_ignore_term_languages: [],
-    speculative_turn: false,
-    retranscribe_on_turn_timeout: false,
-    transcribe_on_disabled_interruptions: false,
     soft_timeout_config: {
       timeout_seconds: EXPECTED.softTimeoutSeconds,
-      message: "…",
+      message: "Hmm...",
     },
   };
-
   config.conversation = {
     ...(config.conversation || {}),
-    client_events: [...new Set([
-      ...(config.conversation?.client_events || []),
-      "interruption",
-      "user_transcript",
-      "agent_response_correction",
-    ])],
+    client_events: [...new Set([...(config.conversation?.client_events || []), "interruption", "user_transcript"])],
   };
-
   return config;
 };
 
@@ -229,21 +203,18 @@ export const configureElevenAgent = async ({ apiKey, agentId, voiceId, signal, f
   if (!isValidAgentId(normalized)) throw new ElevenAgentsBackendError(CODES.AGENT_ID_INVALID, "ElevenAgent ID is invalid.");
   const normalizedVoiceId = voiceId == null ? "" : normalizeVoiceId(voiceId);
   if (voiceId != null && !isValidVoiceId(normalizedVoiceId)) {
-    throw new ElevenAgentsBackendError(CODES.VOICE_ID_INVALID, "ElevenLabs voice ID is invalid.");
+    throw new ElevenAgentsBackendError(CODES.VOICE_ID_INVALID, "ElevenLabs Voice ID 格式无效。");
   }
-
   const [agent, models] = await Promise.all([
     getElevenAgent({ apiKey, agentId: normalized, signal, fetchImpl }),
     listElevenAgentLlms({ apiKey, signal, fetchImpl }),
     ...(normalizedVoiceId ? [getElevenVoice({ apiKey, voiceId: normalizedVoiceId, signal, fetchImpl })] : []),
   ]);
   const modelId = resolveQwenModelId(models);
-
   const branchId = String(agent?.main_branch_id || agent?.branch_id || "").trim();
   const updateUrl = new URL(`${API_BASE}/v1/convai/agents/${encodeURIComponent(normalized)}`);
   if (branchId) updateUrl.searchParams.set("branch_id", branchId);
   const conversationConfig = buildConfiguredConversationConfig(agent, modelId, normalizedVoiceId);
-
   let response;
   try {
     response = await fetchImpl(updateUrl.toString(), {
@@ -259,7 +230,6 @@ export const configureElevenAgent = async ({ apiKey, agentId, voiceId, signal, f
     if (error?.name === "AbortError") throw new ElevenAgentsBackendError(CODES.REQUEST_CANCELLED, "Request cancelled.");
     throw new ElevenAgentsBackendError(CODES.PROVIDER_UNAVAILABLE, "Unable to update the ElevenAgent configuration.");
   }
-
   if (!response.ok) {
     const error = providerError(response.status, "update-agent");
     error.providerStatus = response.status;
@@ -281,36 +251,36 @@ export const configureElevenAgent = async ({ apiKey, agentId, voiceId, signal, f
         type: String(item?.type || "").slice(0, 80),
       }));
     } catch {
-      // Ignore provider bodies that are not structured validation errors.
+      // Provider bodies are intentionally not forwarded when they are not structured validation errors.
     }
     throw error;
   }
-
   let updatePayload;
   try {
     updatePayload = await response.json();
   } catch {
     throw new ElevenAgentsBackendError(CODES.PROVIDER_UNAVAILABLE, "ElevenLabs returned an invalid update response.");
   }
-
   const updateValidation = inspectElevenAgentConfig(updatePayload);
   if (!updateValidation.ok) {
     throw new ElevenAgentsBackendError(CODES.AGENT_CONFIG_MISMATCH, updateValidation.issues[0]?.message || "The ElevenAgent update was not applied.");
   }
-
   const updated = await getElevenAgent({ apiKey, agentId: normalized, branchId, signal, fetchImpl });
   const validation = inspectElevenAgentConfig(updated);
   if (!validation.ok) {
     throw new ElevenAgentsBackendError(CODES.AGENT_CONFIG_MISMATCH, validation.issues[0]?.message || "The updated ElevenAgent configuration is invalid.");
   }
+  return { ...validation, agentId: normalized, modelId, voiceId: validation.voiceId, configVersion: EXPECTED.configVersion };
+};
 
-  return {
-    ...validation,
-    agentId: normalized,
-    modelId,
-    voiceId: validation.voiceId,
-    configVersion: EXPECTED.configVersion,
-  };
+const issue = (code, field, message) => ({ code, field, message });
+
+const normalizeLanguage = (value) => {
+  const language = String(value || "").trim().toLowerCase().replace("_", "-");
+  if (language === "zh-cn" || language === "zh-hans" || language === "cmn") return "zh";
+  if (language === "ja-jp") return "ja";
+  if (language === "en-us" || language === "en-gb") return "en";
+  return language;
 };
 
 export const inspectElevenAgentConfig = (agent) => {
@@ -329,74 +299,81 @@ export const inspectElevenAgentConfig = (agent) => {
   if (normalizeLanguage(config.agent?.language) !== EXPECTED.defaultLanguage) {
     issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.agent.language", "Agent default language must be Chinese while English and Japanese remain automatic language presets."));
   }
+
   if (prompt.llm !== EXPECTED.llmType) {
-    issues.push(issue(CODES.QWEN_MODEL_MISMATCH, "conversation_config.agent.prompt.llm", `Voice LLM must be ${EXPECTED.llmModelName}.`));
-  }
-  if (prompt.custom_llm != null || config.agent?.llm?.custom_llm != null) {
-    issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.agent.prompt.custom_llm", "Native Qwen voice must not use a Custom LLM gateway."));
+    issues.push(issue(CODES.QWEN_MODEL_MISMATCH, "conversation_config.agent.prompt.llm", `LLM must be ${EXPECTED.llmModelName}.`));
   }
   if (String(prompt.prompt || "").trim() !== ELEVENAGENTS_BASE_PROMPT) {
-    issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.agent.prompt.prompt", "Agent must use the fixed language-following base prompt."));
+    issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.agent.prompt.prompt", "Agent 必须使用固定的无人格三语基础提示词。"));
   }
   if (prompt.ignore_default_personality !== true) {
-    issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.agent.prompt.ignore_default_personality", "ElevenAgents default personality must be disabled."));
+    issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.agent.prompt.ignore_default_personality", "必须关闭 ElevenAgents 默认人格。"));
   }
   const languageTool = prompt.built_in_tools?.language_detection;
   if (!languageTool) {
-    issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.agent.prompt.built_in_tools.language_detection", "The language detection tool must be enabled."));
+    issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.agent.prompt.built_in_tools.language_detection", "必须启用语言检测系统工具。"));
   } else if (languageTool.params?.system_tool_type !== "language_detection") {
-    issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.agent.prompt.built_in_tools.language_detection", "The language detection tool must remain a silent system language detector."));
+    issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.agent.prompt.built_in_tools.language_detection", "语言检测必须静默执行，且不得播报工具或语言路由信息。"));
   }
   if (EXPECTED.supportedLanguages.some((language) => !languages.has(language)) || [...languages].some((language) => !EXPECTED.supportedLanguages.includes(language))) {
-    issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.language_presets", "The agent must support only Chinese, English, and Japanese."));
+    issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.language_presets", "Agent 只允许并必须支持中文、英文和日语。"));
+  }
+  if (prompt.custom_llm != null) {
+    issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.agent.prompt.custom_llm", "Native Qwen must not use a Custom LLM configuration."));
   }
   if (prompt.thinking_budget != null && Number(prompt.thinking_budget) !== 0) {
     issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.agent.prompt.thinking_budget", "Voice conversations must disable thinking."));
   }
   if (prompt.enable_reasoning_summary === true) {
-    issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.agent.prompt.enable_reasoning_summary", "Reasoning summaries must be disabled."));
+    issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.agent.prompt.enable_reasoning_summary", "Reasoning summary 必须关闭。"));
   }
   if (prompt.backup_llm_config?.preference !== EXPECTED.llmFallback) {
-    issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.agent.prompt.backup_llm_config.preference", "LLM fallback must be disabled."));
+    issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.agent.prompt.backup_llm_config.preference", "LLM fallback 必须关闭。"));
   }
   if (asr.provider !== EXPECTED.asrProvider) {
-    issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.asr.provider", "ASR must use Scribe v2 Realtime."));
+    issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.asr.provider", "语音识别必须使用 Scribe v2 Realtime。"));
   }
   if (tts.model_id !== EXPECTED.ttsModelId) {
-    issues.push(issue(CODES.TTS_MODEL_MISMATCH, "conversation_config.tts.model_id", `TTS must use ${EXPECTED.ttsModelId}.`));
+    issues.push(issue(CODES.TTS_MODEL_MISMATCH, "conversation_config.tts.model_id", `TTS 模型必须为 ${EXPECTED.ttsModelId}。`));
   }
   const ttsFallbackConfigured = Boolean(
     tts.fallback_enabled
     || tts.use_fallback
     || String(tts.fallback_model_id || "").trim()
-    || (Array.isArray(tts.fallback_model_ids) && tts.fallback_model_ids.length > 0)
+    || (Array.isArray(tts.fallback_model_ids) && tts.fallback_model_ids.length > 0),
   );
   if (ttsFallbackConfigured) {
     issues.push(issue(CODES.TTS_MODEL_MISMATCH, "conversation_config.tts.fallback", "TTS fallback must be disabled."));
   }
   if (!String(tts.voice_id || "").trim()) {
-    issues.push(issue(CODES.VOICE_NOT_CONFIGURED, "conversation_config.tts.voice_id", "A voice must be configured on the ElevenAgent."));
-  }
-  if (String(turn.turn_model || "").trim() !== EXPECTED.turnMode) {
-    issues.push(issue(CODES.TURN_CONFIG_MISMATCH, "conversation_config.turn.turn_model", `Turn model must be ${EXPECTED.turnMode}.`));
+    issues.push(issue(CODES.VOICE_NOT_CONFIGURED, "conversation_config.tts.voice_id", "ElevenAgent 尚未配置 Voice。"));
   }
   if (turn.turn_eagerness !== EXPECTED.turnEagerness) {
-    issues.push(issue(CODES.TURN_CONFIG_MISMATCH, "conversation_config.turn.turn_eagerness", "Turn eagerness must be normal."));
+    issues.push(issue(CODES.TURN_CONFIG_MISMATCH, "conversation_config.turn.turn_eagerness", "Turn eagerness 必须为 normal。"));
   }
   if (Number(turn.turn_timeout) !== EXPECTED.turnTimeoutSeconds) {
-    issues.push(issue(CODES.TURN_CONFIG_MISMATCH, "conversation_config.turn.turn_timeout", `Turn timeout must be ${EXPECTED.turnTimeoutSeconds} seconds.`));
+    issues.push(issue(
+      CODES.TURN_CONFIG_MISMATCH,
+      "conversation_config.turn.turn_timeout",
+      `等待用户说话的静默窗口必须为 ${EXPECTED.turnTimeoutSeconds} 秒。`,
+    ));
   }
   if (Number(turn.silence_end_call_timeout) !== EXPECTED.silenceEndCallTimeoutSeconds) {
-    issues.push(issue(CODES.TURN_CONFIG_MISMATCH, "conversation_config.turn.silence_end_call_timeout", "Silence must never end the session automatically."));
+    issues.push(issue(
+      CODES.TURN_CONFIG_MISMATCH,
+      "conversation_config.turn.silence_end_call_timeout",
+      "不得因用户静默自动结束连续语音会话。",
+    ));
   }
   if (Number(turn.soft_timeout_config?.timeout_seconds) !== EXPECTED.softTimeoutSeconds) {
-    issues.push(issue(CODES.TURN_CONFIG_MISMATCH, "conversation_config.turn.soft_timeout_config", "Soft timeout must be disabled."));
+    issues.push(issue(
+      CODES.TURN_CONFIG_MISMATCH,
+      "conversation_config.turn.soft_timeout_config",
+      "Soft timeout 必须禁用，避免填充语与正式回复重叠。",
+    ));
   }
-  if (!clientEvents.includes("interruption")
-    || !clientEvents.includes("user_transcript")
-    || !clientEvents.includes("agent_response_correction")
-    || config.agent?.disable_first_message_interruptions === true) {
-    issues.push(issue(CODES.TURN_CONFIG_MISMATCH, "conversation_config.conversation.client_events", "Interruption, user transcript, and response correction events must stay enabled."));
+  if (!clientEvents.includes("interruption") || config.agent?.disable_first_message_interruptions === true) {
+    issues.push(issue(CODES.TURN_CONFIG_MISMATCH, "conversation_config.conversation.client_events", "ElevenAgent 必须启用用户打断。"));
   }
 
   return {
@@ -415,14 +392,14 @@ export const validateElevenAgent = async (options) => {
 
 export const createElevenAgentsConversationToken = async ({ apiKey, agentId, signal, fetchImpl = fetch }) => {
   const normalized = normalizeAgentId(agentId);
-  if (!isValidAgentId(normalized)) throw new ElevenAgentsBackendError(CODES.AGENT_ID_INVALID, "ElevenAgent ID is invalid.");
+  if (!isValidAgentId(normalized)) throw new ElevenAgentsBackendError(CODES.AGENT_ID_INVALID, "ElevenAgent ID 格式无效。");
   const url = new URL(`${API_BASE}/v1/convai/conversation/token`);
   url.searchParams.set("agent_id", normalized);
   url.searchParams.set("environment", "production");
   const data = await requestJson({ url: url.toString(), apiKey, signal, fetchImpl, operation: "token" });
   const token = String(data?.token || "");
   const conversationId = String(data?.conversation_id || "");
-  if (!token || !conversationId) throw new ElevenAgentsBackendError(CODES.SESSION_TOKEN_FAILED, "ElevenLabs returned an invalid conversation token response.");
+  if (!token || !conversationId) throw new ElevenAgentsBackendError(CODES.SESSION_TOKEN_FAILED, "ElevenLabs 返回了无效的会话凭证。");
   return { connectionType: "webrtc", conversationToken: token, conversationId };
 };
 

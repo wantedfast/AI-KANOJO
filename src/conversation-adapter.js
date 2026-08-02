@@ -1,9 +1,8 @@
 import { RealtimeScribe } from "./realtime-scribe.js";
 import {
+  ELEVEN_V3_CONVERSATIONAL_MODEL_ID,
   ELEVEN_V3_MODEL_ID,
-  VOICE_MODE_REALTIME,
-  VOICE_MODE_EXPRESSIVE,
-  normalizeVoiceMode,
+  isSupportedElevenTtsModel,
 } from "../shared/model-contracts.js";
 
 const now = () => Date.now();
@@ -13,7 +12,6 @@ export const EMPTY_CONVERSATION_SNAPSHOT = Object.freeze({
   messages: [],
   phase: "idle",
   voiceState: "Idle",
-  voiceMode: VOICE_MODE_REALTIME,
   voiceTurns: [],
   activeTurnId: "",
   transcript: "",
@@ -157,11 +155,8 @@ const safeBackendMessage = (result, fallback) => result?.error?.message || fallb
 
 export const normalizeConversationClientError = (value) => {
   const message = String(value?.message || value || "").trim();
-  if (/custom[_ -]?llm|failed to generate response from custom llm/i.test(message)) {
-    return "检测到旧 Custom LLM 配置。语音对话应使用 ElevenAgents 原生 Qwen，请重新应用语音 Agent 配置后重试。";
-  }
-  if (/unknown server/i.test(message)) {
-    return "ElevenAgents 语音服务暂时不可用，请重新连接后重试。";
+  if (/custom[_ -]?llm|failed to generate response from custom llm|unknown server/i.test(message)) {
+    return "检测到旧的 Custom LLM 会话错误。请重新配置并发布使用原生 Qwen 的 ElevenAgent。";
   }
   if (/microphone|notallowederror|permission denied|permission dismissed/i.test(message)) {
     return "无法使用麦克风。请在 Windows 隐私设置中允许桌面应用访问麦克风后重试。";
@@ -178,11 +173,6 @@ export const sanitizeAgentReply = (value) => {
 };
 
 const hasLexicalContent = (value) => /[\p{L}\p{N}]/u.test(String(value || ""));
-
-const normalizeVoicePreferences = (preferences = {}, previous = {}) => ({
-  voiceId: String(preferences.voiceId ?? previous.voiceId ?? "").trim(),
-  voiceMode: normalizeVoiceMode(preferences.voiceMode, preferences.ttsModelId || previous.ttsModelId),
-});
 
 export function createElevenAgentsConversationAdapter({
   api,
@@ -208,21 +198,19 @@ export function createElevenAgentsConversationAdapter({
   let setupTimer = null;
   let recoveryTimer = null;
   let lastInputDeviceId = "";
-  let voicePreferences = { voiceId: "", voiceMode: VOICE_MODE_REALTIME };
+  let voicePreferences = { voiceId: "", ttsModelId: ELEVEN_V3_CONVERSATIONAL_MODEL_ID };
   let standaloneOutputRun = 0;
   let standaloneOutputPending = false;
   let standaloneAudio = null;
   let standaloneAudioUrl = "";
   let turnSequence = 0;
   let activeTurnId = "";
-  let interruptedTurnId = "";
   let vadActive = false;
-  let vadCandidateTimer = null;
   let detachTranscriptionListener = null;
   let captionTranscriber = null;
   const sendTimers = new Map();
 
-  const usesStandaloneV3 = () => voicePreferences.voiceMode === VOICE_MODE_EXPRESSIVE;
+  const usesStandaloneV3 = () => voicePreferences.ttsModelId === ELEVEN_V3_MODEL_ID;
   const stopStandaloneOutput = () => {
     standaloneOutputRun += 1;
     standaloneOutputPending = false;
@@ -259,10 +247,6 @@ export function createElevenAgentsConversationAdapter({
 
   const nextMessageId = (role) => `${role}-${nowFn()}-${messageSequence += 1}`;
   const nextTurnId = () => `turn-${nowFn()}-${turnSequence += 1}`;
-  const clearVadCandidate = () => {
-    clearTimer(vadCandidateTimer);
-    vadCandidateTimer = null;
-  };
   const logTurn = (turnId, event, detail = undefined) => {
     const payload = { turnId: turnId || "session", event, at: nowFn() };
     if (detail !== undefined) payload.detail = detail;
@@ -302,7 +286,6 @@ export function createElevenAgentsConversationAdapter({
       messageSent: false,
       responseStarted: false,
       responseCompleted: false,
-      assistantMessageId: "",
       error: "",
     };
     store.publish({
@@ -323,19 +306,13 @@ export function createElevenAgentsConversationAdapter({
     sendTimers.delete(turnId);
   };
   const discardNonSpeechTurn = () => {
-    const snapshot = store.getSnapshot();
     const turn = activeTurnId && findTurn(activeTurnId);
-    if (
-      snapshot.phase !== "transcribing"
-      || !turn
-      || turn.messageSent
-      || hasLexicalContent(turn.transcriptFinal)
-      || hasLexicalContent(turn.transcriptPartial)
-    ) return;
-    clearSendTimer(turn.turnId);
-    store.publish({
-      voiceTurns: snapshot.voiceTurns.filter((item) => item.turnId !== turn.turnId),
-    });
+    if (turn && !turn.messageSent && !hasLexicalContent(turn.transcriptFinal)) {
+      clearSendTimer(turn.turnId);
+      store.publish({
+        voiceTurns: store.getSnapshot().voiceTurns.filter((item) => item.turnId !== turn.turnId),
+      });
+    }
     activeTurnId = "";
     store.publish({
       phase: sessionKind === "voice" ? "listening" : store.getSnapshot().phase,
@@ -353,10 +330,20 @@ export function createElevenAgentsConversationAdapter({
     activeTurnId = "";
     store.publish({ activeTurnId: "", phase: "error", voiceState: "Error", error: message });
     logTurn(turnId, "error", message);
+    scheduleRecovery();
   };
   const scheduleSendFailure = (turnId) => {
     clearSendTimer(turnId);
     sendTimers.set(turnId, setTimer(() => markSendFailed(turnId), sendTimeoutMs));
+  };
+  const scheduleRecovery = () => {
+    clearTimer(recoveryTimer);
+    recoveryTimer = setTimer(() => {
+      if (sessionKind !== "voice" || !session || store.getSnapshot().phase !== "error") return;
+      Promise.resolve(session.setMicMuted?.(false)).catch(() => {});
+      captionTranscriber?.setMuted?.(false);
+      store.publish({ phase: "listening", voiceState: "Listening" });
+    }, recoveryTimeoutMs);
   };
   const publishError = (message) => {
     const normalized = normalizeConversationClientError(message);
@@ -373,6 +360,7 @@ export function createElevenAgentsConversationAdapter({
       logTurn("session", "error", normalized);
     }
     store.publish({ phase: "error", voiceState: "Error", activeTurnId: "", error: normalized });
+    scheduleRecovery();
   };
   const clearSetupTimer = () => {
     clearTimer(setupTimer);
@@ -380,13 +368,12 @@ export function createElevenAgentsConversationAdapter({
   };
   const appendMessage = (role, content, status = "complete") => {
     const text = String(content || "").trim();
-    if (!text) return "";
+    if (!text) return;
     const current = store.getSnapshot().messages;
     const last = current.at(-1);
-    if (last?.role === role && last.content === text) return last.id;
-    const messageId = nextMessageId(role);
+    if (last?.role === role && last.content === text) return;
     const messages = [...current, {
-        id: messageId,
+        id: nextMessageId(role),
         role,
         content: text,
         createdAt: nowFn(),
@@ -394,87 +381,6 @@ export function createElevenAgentsConversationAdapter({
       }].slice(-24);
     store.publish({ messages });
     api?.saveChat?.(messages).catch?.(() => {});
-    return messageId;
-  };
-  const saveMessages = (messages) => api?.saveChat?.(messages).catch?.(() => {});
-  const findLatestAssistantTurnId = () => [...store.getSnapshot().voiceTurns]
-    .reverse()
-    .find((turn) => turn.assistantMessageId)?.turnId || "";
-  const replaceLastAssistantMessage = (content) => {
-    const text = sanitizeAgentReply(content);
-    const current = store.getSnapshot().messages;
-    const index = [...current].map(({ role }) => role).lastIndexOf("assistant");
-    if (index < 0) return false;
-    const nextMessages = current.slice();
-    if (text) {
-      nextMessages[index] = {
-        ...nextMessages[index],
-        content: text,
-        status: "complete",
-      };
-    } else {
-      nextMessages.splice(index, 1);
-    }
-    store.publish({ messages: nextMessages, reply: text });
-    saveMessages(nextMessages);
-    return true;
-  };
-  const handleInterruption = () => {
-    clearTimer(completionTimer);
-    if (usesStandaloneV3()) stopStandaloneOutput();
-    const turnId = activeTurnId || [...store.getSnapshot().voiceTurns].reverse()
-      .find((turn) => turn.responseStarted && !turn.responseCompleted)?.turnId;
-    if (turnId) {
-      updateTurn(turnId, { status: "interrupted" });
-      logTurn(turnId, "interrupted");
-      interruptedTurnId = turnId;
-    }
-    activeTurnId = "";
-    clearVadCandidate();
-    if (!usesStandaloneV3()) {
-      captionTranscriber?.setMuted?.(false);
-      Promise.resolve(session?.setMicMuted?.(false)).catch(() => {});
-    }
-    store.publish({
-      activeTurnId: "",
-      phase: "listening",
-      voiceState: "Listening",
-      transcript: "",
-      transcriptPartial: "",
-      reply: "",
-      error: "",
-    });
-  };
-  const handleAgentResponseCorrection = ({ original_agent_response, corrected_agent_response } = {}) => {
-    const corrected = sanitizeAgentReply(corrected_agent_response);
-    const original = sanitizeAgentReply(original_agent_response);
-    const current = store.getSnapshot().messages;
-    let index = [...current].findLastIndex?.((message) => message.role === "assistant" && sanitizeAgentReply(message.content) === original);
-    if (typeof index !== "number" || index < 0) {
-      index = [...current].map(({ role }) => role).lastIndexOf("assistant");
-    }
-    if (index < 0) return;
-    const nextMessages = current.slice();
-    if (corrected) {
-      nextMessages[index] = { ...nextMessages[index], content: corrected, status: "complete" };
-    } else {
-      nextMessages.splice(index, 1);
-    }
-    const wasInterrupted = Boolean(interruptedTurnId);
-    const correctionTurnId = interruptedTurnId || findLatestAssistantTurnId?.() || "";
-    if (correctionTurnId) {
-      updateTurn(correctionTurnId, { status: "complete", responseCompleted: true });
-      logTurn(correctionTurnId, "responseCorrected", corrected);
-    }
-    interruptedTurnId = "";
-    store.publish({
-      messages: nextMessages,
-      // A correction for an interrupted turn is history repair, not a new
-      // visible reply. Keeping the current line untouched prevents a late
-      // correction from resurfacing speech the user has already stopped.
-      ...(wasInterrupted ? {} : { reply: corrected }),
-    });
-    saveMessages(nextMessages);
   };
   const receivePartialTranscript = (value) => {
     const text = String(value || "").trim();
@@ -572,7 +478,7 @@ export function createElevenAgentsConversationAdapter({
       deviceId: inputDeviceId,
       sourceStream,
       onPartial: receivePartialTranscript,
-      onCommitted: () => {},
+      onCommitted: receiveFinalTranscript,
       onStatus: (status) => {
         if (currentRun !== runId || status !== "listening") return;
         if (["connecting", "completed"].includes(store.getSnapshot().phase)) {
@@ -589,8 +495,7 @@ export function createElevenAgentsConversationAdapter({
     captionTranscriber = transcriber;
     try {
       await transcriber.start();
-      const phase = store.getSnapshot().phase;
-      transcriber.setMuted?.(phase === "paused" || (usesStandaloneV3() && phase === "speaking"));
+      if (["speaking", "paused"].includes(store.getSnapshot().phase)) transcriber.setMuted?.(true);
     } catch (error) {
       if (captionTranscriber === transcriber) captionTranscriber = null;
       if (currentRun === runId) {
@@ -631,9 +536,7 @@ export function createElevenAgentsConversationAdapter({
     detachTranscriptionListener?.();
     detachTranscriptionListener = null;
     activeTurnId = "";
-    interruptedTurnId = "";
     vadActive = false;
-    clearVadCandidate();
     if (!preserveSetupTimer) clearSetupTimer();
     cancelPendingCredential();
     const current = session;
@@ -649,7 +552,6 @@ export function createElevenAgentsConversationAdapter({
     if (reset) store.publish({
       phase: "idle",
       voiceState: "Idle",
-      voiceMode: voicePreferences.voiceMode,
       voiceTurns: [],
       activeTurnId: "",
       transcript: "",
@@ -726,8 +628,8 @@ export function createElevenAgentsConversationAdapter({
       }
       const text = normalizedRole === "assistant" ? sanitizeAgentReply(rawText) : rawText;
       if (!text) return;
+      appendMessage(normalizedRole, text);
       if (normalizedRole === "user") {
-        appendMessage(normalizedRole, text);
         let turnId = activeTurnId;
         if (!turnId || !findTurn(turnId)) turnId = ensureActiveTurn({ speechDetected: true });
         const turn = findTurn(turnId);
@@ -758,8 +660,6 @@ export function createElevenAgentsConversationAdapter({
           updateTurn(turnId, { status: usesStandaloneV3() ? "thinking" : "speaking", responseStarted: true });
           activeTurnId = turnId;
         }
-        const assistantMessageId = appendMessage("assistant", text);
-        if (turnId && assistantMessageId) updateTurn(turnId, { assistantMessageId });
         if (kind === "voice" && usesStandaloneV3()) {
           if (!voicePreferences.voiceId) {
             publishError("标准 Eleven v3 需要先选择一个 ElevenLabs 音色。");
@@ -797,7 +697,8 @@ export function createElevenAgentsConversationAdapter({
       }
       if (mode === "speaking") {
         vadActive = false;
-        captionTranscriber?.setMuted?.(false);
+        captionTranscriber?.setMuted?.(true);
+        Promise.resolve(session?.setMicMuted?.(true)).catch((error) => publishError(error.message));
         const turnId = activeTurnId;
         if (turnId) {
           const turn = findTurn(turnId);
@@ -807,6 +708,7 @@ export function createElevenAgentsConversationAdapter({
         store.publish({ phase: "speaking", voiceState: "Speaking" });
         return;
       }
+      Promise.resolve(session?.setMicMuted?.(false)).catch((error) => publishError(error.message));
       captionTranscriber?.setMuted?.(false);
       vadActive = false;
       const snapshot = store.getSnapshot();
@@ -832,28 +734,11 @@ export function createElevenAgentsConversationAdapter({
         store.publish({ phase: "listening", voiceState: "Listening" });
       }
     },
-    onInterruption: () => {
-      if (currentRun !== runId || kind !== "voice" || usesStandaloneV3()) return;
-      handleInterruption();
-    },
-    onAgentResponseCorrection: (payload) => {
-      if (currentRun !== runId || kind !== "voice" || usesStandaloneV3()) return;
-      handleAgentResponseCorrection(payload);
-    },
     onVadScore: ({ vadScore }) => {
       if (currentRun !== runId || kind !== "voice") return;
       const speechNow = Number(vadScore) >= 0.35;
-      if (speechNow && !["speaking", "paused", "error"].includes(store.getSnapshot().phase)) {
-        if (!vadCandidateTimer) {
-          vadCandidateTimer = setTimer(() => {
-            vadCandidateTimer = null;
-            if (currentRun === runId && vadActive && !["speaking", "paused", "error"].includes(store.getSnapshot().phase)) {
-              ensureActiveTurn({ speechDetected: true });
-            }
-          }, 180);
-        }
-      } else {
-        clearVadCandidate();
+      if (speechNow && !vadActive && !["speaking", "paused", "error"].includes(store.getSnapshot().phase)) {
+        ensureActiveTurn({ speechDetected: true });
       }
       vadActive = speechNow;
     },
@@ -945,11 +830,15 @@ export function createElevenAgentsConversationAdapter({
 
   const startVoice = (inputDeviceId = "", preferences = voicePreferences) => {
     lastInputDeviceId = String(inputDeviceId || "").trim();
-    voicePreferences = normalizeVoicePreferences(preferences, voicePreferences);
+    voicePreferences = {
+      voiceId: String(preferences?.voiceId || voicePreferences.voiceId || "").trim(),
+      ttsModelId: isSupportedElevenTtsModel(preferences?.ttsModelId)
+        ? preferences.ttsModelId
+        : ELEVEN_V3_CONVERSATIONAL_MODEL_ID,
+    };
     store.publish({
       phase: "connecting",
       voiceState: "Idle",
-      voiceMode: voicePreferences.voiceMode,
       voiceTurns: [],
       activeTurnId: "",
       transcript: "",
