@@ -11,15 +11,16 @@ import { EMPTY_CONVERSATION_SNAPSHOT, resolveConversationAdapter } from "./conve
 import { TextChatPanel, VoiceConversationPopover } from "./conversation-surfaces.jsx";
 import { CharacterAssetsManager } from "./character-assets-manager.jsx";
 import {
-  ELEVEN_TTS_MODEL_OPTIONS,
-  ELEVEN_V3_CONVERSATIONAL_MODEL_ID,
+  VOICE_MODE_OPTIONS,
+  VOICE_MODE_REALTIME,
+  normalizeVoiceMode,
 } from "../shared/model-contracts.js";
 import { CHARACTER_ASSET_STATES, DEFAULT_CHARACTER_ASSETS, visualStateAssetKey } from "../shared/character-assets.js";
 
 const api = window.kanojo ?? {
   isDesktop: false,
   getBootstrap: async () => ({
-    settings: { demoMode: true, voiceId: "", microphoneId: "", ttsModelId: ELEVEN_V3_CONVERSATIONAL_MODEL_ID },
+    settings: { demoMode: true, voiceId: "", microphoneId: "", voiceMode: VOICE_MODE_REALTIME },
     chat: [],
     credentials: { deepseek: false, elevenlabs: false },
     locked: false,
@@ -107,7 +108,7 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
     demoMode: !api.isDesktop,
     voiceId: "",
     microphoneId: "",
-    ttsModelId: ELEVEN_V3_CONVERSATIONAL_MODEL_ID,
+    voiceMode: VOICE_MODE_REALTIME,
   });
   const [credentials, setCredentials] = useState({ deepseek: false, elevenlabs: false });
   const [microphones, setMicrophones] = useState([]);
@@ -126,6 +127,7 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
   const demoTimers = useRef([]);
   const audioRef = useRef(null);
   const featureNoticeTimer = useRef(null);
+  const settingsCloseTimer = useRef(null);
   const dragPointer = useRef(null);
   const sessionActiveRef = useRef(false);
   const pausedRef = useRef(false);
@@ -182,7 +184,12 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
     api.getBootstrap().then((data) => {
       if (!mounted) return;
       setFrontendPreviewMode(!api.isDesktop || Boolean(data.smokeMode));
-      setSettings((current) => ({ ...current, ...data.settings, demoMode: !api.isDesktop || Boolean(data.smokeMode) }));
+      setSettings((current) => ({
+        ...current,
+        ...data.settings,
+        voiceMode: normalizeVoiceMode(data.settings?.voiceMode, data.settings?.ttsModelId),
+        demoMode: !api.isDesktop || Boolean(data.smokeMode),
+      }));
       setCredentials(data.credentials);
       conversation.setBackendStatus?.(data.conversationBackend);
       conversation.hydrate?.(data.chat);
@@ -203,6 +210,7 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
       scribeRef.current?.stop();
       audioRef.current?.pause();
       clearTimeout(featureNoticeTimer.current);
+      clearTimeout(settingsCloseTimer.current);
       clearTimeout(continuousTimerRef.current);
       navigator.mediaDevices?.removeEventListener?.("devicechange", handleDeviceChange);
     };
@@ -425,11 +433,18 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
     setSavingSettings(true);
     setSaveNote("正在校验并应用音色…");
     try {
+      const previousVoiceMode = settings.voiceMode;
       const next = await api.saveSettings(settings);
-      setSettings((current) => ({ ...current, ...next, demoMode: !api.isDesktop }));
+      const nextVoiceMode = normalizeVoiceMode(next.voiceMode, next.ttsModelId);
+      setSettings((current) => ({ ...current, ...next, voiceMode: nextVoiceMode, demoMode: !api.isDesktop }));
+      if (conversationSurface === "voice" && nextVoiceMode !== previousVoiceMode) {
+        conversation.endVoice?.();
+        setConversationSurface("none");
+      }
       const ready = !api.isDesktop || (credentials.deepseek && credentials.elevenlabs && next.voiceId);
       setSaveNote(ready ? "音色已应用，可以开始对话" : "仍需填写缺失的配置");
-      if (ready) setTimeout(() => setPanel("compact"), 700);
+      clearTimeout(settingsCloseTimer.current);
+      if (ready) settingsCloseTimer.current = setTimeout(() => setPanel("compact"), 700);
     } catch (error) {
       setSaveNote(error.message || "保存失败");
     } finally {
@@ -517,7 +532,7 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
       setConversationSurface("voice");
       conversation.startVoice?.(settings.microphoneId, {
         voiceId: settings.voiceId,
-        ttsModelId: settings.ttsModelId,
+        voiceMode: settings.voiceMode,
       });
       return;
     }
@@ -606,7 +621,7 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
                 className={`state-${visualState}`}
                 onClick={handleVoiceRequest}
                 icon={<Microphone weight="light" />}
-                label={conversationSurface === "voice" ? `${meta.label}，点击暂停或继续` : "开始简短语音对话"}
+                label={conversationSurface === "voice" ? `${meta.label}，点击暂停或继续` : "开始语音对话"}
               />
               <IconFeatureButton
                 id="sing"
@@ -666,6 +681,7 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
         {!minimized && panel !== "settings" && conversationSurface === "voice" && (
           <VoiceConversationPopover
             snapshot={conversationSnapshot}
+            voiceMode={settings.voiceMode}
             portraitSrc={portraitSrc}
             onPause={() => conversation.pauseVoice?.()}
             onResume={() => conversation.resumeVoice?.()}
@@ -690,9 +706,9 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
                 </select></label>
                 <div className="voice-setting-meta"><small className={`settings-hint ${voiceCatalogState === "error" ? "is-error" : ""}`}>{voiceCatalogState === "error" ? voiceCatalogError : "选择后将同步到语音 Agent，下次语音对话生效"}</small><button type="button" className="voice-refresh-button" onClick={refreshVoices} disabled={voiceCatalogState === "loading"}>{voiceCatalogState === "loading" ? "加载中" : "刷新音色"}</button></div>
               </div>
-              <label><span>语音模型</span><select aria-label="语音模型" value={settings.ttsModelId} onChange={(event) => setSettings({ ...settings, ttsModelId: event.target.value })}>
-                {ELEVEN_TTS_MODEL_OPTIONS.map((model) => <option value={model.id} key={model.id}>{model.label}{model.mode === "realtime" ? " · 实时优先" : " · 表现力优先"}</option>)}
-              </select><small className="settings-hint">Conversational 响应更快；标准 V3 使用独立合成，音质优先但延迟更高。</small></label>
+              <label><span>语音模式</span><select aria-label="语音模式" value={settings.voiceMode} onChange={(event) => setSettings({ ...settings, voiceMode: event.target.value })}>
+                {VOICE_MODE_OPTIONS.map((mode) => <option value={mode.id} key={mode.id}>{mode.label}</option>)}
+              </select><small className="settings-hint">{VOICE_MODE_OPTIONS.find((mode) => mode.id === settings.voiceMode)?.capability || VOICE_MODE_OPTIONS[0].capability}</small></label>
               <label><span>麦克风</span><select value={settings.microphoneId} onChange={(event) => setSettings({ ...settings, microphoneId: event.target.value })}><option value="">系统默认麦克风</option>{microphones.map((device, index) => <option value={device.deviceId} key={device.deviceId}>{device.label || `麦克风 ${index + 1}`}</option>)}</select></label>
             </div>
             <CharacterAssetsManager

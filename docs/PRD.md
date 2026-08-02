@@ -1,5 +1,27 @@
 # AI-KANOJO 产品需求文档
 
+## v2.4 文字 DeepSeek / 语音原生 Qwen 修正
+
+- 文字聊天固定走 Electron `chat:stream → deepseek-v4-flash`，不创建 ElevenAgents 会话。
+- 语音聊天固定走 ElevenAgents 原生 Qwen、Scribe v2 Realtime 与 Eleven v3 Conversational；不使用 DeepSeek Custom LLM，也不要求额外网关。
+- 实时语音保留说话期间开麦、原生插话、response correction、`turn_v3`、normal eagerness、7 秒异常兜底，并禁用静默结束与 soft-timeout 填充语。
+- 高表现力模式仍由原生 Qwen 完成文本回合，再调用独立 `eleven_v3`；合成与播放期间关闭麦克风。
+- 文字与语音回答均不得强制限制为简短回答、1–3 句、固定段落数或固定时长；回答长度随用户问题和明确要求自适应。
+- 本节覆盖下方 v2.3 中将语音 LLM 改为 DeepSeek Custom LLM 的决定；视觉、资产和窗口行为不变。
+
+## v2.3 双链路实时语音对话
+
+> 日期：2026-08-02
+>
+> 状态：实施基准
+
+- 设置保存语义化 `voiceMode: realtime | expressive`，并迁移旧 `ttsModelId`；默认使用实时对话。
+- 实时链路固定为 Scribe v2 Realtime → DeepSeek V4 Flash Custom LLM → Eleven v3 Conversational。Agent 说话期间保持麦克风开启，通过 `interruption` 与 `agent_response_correction` 实现插话和历史修正。
+- 高表现力链路固定为 Scribe v2 Realtime → DeepSeek V4 Flash → 独立 Eleven v3，合成和播放期间关闭麦克风，并明确标记为轮流对话。
+- ElevenAgent 使用 `turn_model: turn_v3`、`turn_eagerness: normal` 与 7 秒异常兜底；禁用静默结束和 soft-timeout 填充语。
+- 不允许 Qwen、旧 TTS 或其他模型自动降级；Custom LLM 网关缺失时显示明确配置错误。
+- 本节覆盖下方 v2.2 的 30 秒等待规则，胶囊、立绘、8-bit、Codex、交通灯和窗口行为不变。
+
 ## v2.2 连续语音等待与字幕净化
 
 > 日期：2026-08-02

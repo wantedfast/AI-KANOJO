@@ -7,7 +7,7 @@ import { createScribeToken, streamDeepSeek, synthesizeElevenV3 } from "./provide
 import { importDesktopCredentials } from "./credential-import.js";
 import { ElevenAgentsService } from "./elevenagents-service.js";
 import { toSafeElevenAgentsError } from "../shared/elevenagents-contracts.js";
-import { ELEVEN_V3_CONVERSATIONAL_MODEL_ID, isSupportedElevenTtsModel } from "../shared/model-contracts.js";
+import { VOICE_MODE_REALTIME, normalizeVoiceMode } from "../shared/model-contracts.js";
 import { createCharacterAssetManager } from "./character-assets.js";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
@@ -235,9 +235,7 @@ function installIpc() {
     const sanitized = {
       voiceId: String(settings.voiceId || "").trim().slice(0, 160),
       microphoneId: String(settings.microphoneId || "").trim().slice(0, 512),
-      ttsModelId: isSupportedElevenTtsModel(settings.ttsModelId)
-        ? settings.ttsModelId
-        : ELEVEN_V3_CONVERSATIONAL_MODEL_ID,
+      voiceMode: normalizeVoiceMode(settings.voiceMode, settings.ttsModelId) || VOICE_MODE_REALTIME,
     };
     const currentVoiceId = String(store.get().settings?.voiceId || "").trim();
     if (sanitized.voiceId !== currentVoiceId) {

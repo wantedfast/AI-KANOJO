@@ -1,5 +1,24 @@
 # Prototype Instructions
 
+## Highest-priority chat/voice provider correction (v2.6 selected)
+
+- Text chat uses the local Electron DeepSeek path (`deepseek-v4-flash`) through `chat:stream`; it must not request an ElevenAgents conversation credential.
+- Voice conversation uses the existing ElevenAgents native Qwen model, Scribe v2 Realtime, and Eleven v3 Conversational. Do not replace the voice Agent LLM with DeepSeek Custom LLM and do not require a Custom LLM gateway.
+- Preserve native realtime interruption, response correction, echo cancellation, `turn_v3`, normal eagerness, the 7-second exceptional fallback, disabled silence end-call, and disabled soft-timeout filler speech.
+- Do not impose a fixed short-answer rule, sentence count, paragraph count, or duration limit on text or voice replies. Match response depth and length to the user's request and keep longer spoken answers easy to follow.
+- Expressive mode keeps native Qwen for the Agent text turn and standalone `eleven_v3` for playback; it remains turn-based and mutes the microphone during synthesis/playback.
+- This v2.6 correction supersedes the v2.5 DeepSeek Custom LLM requirements below. Preserve the capsule, portrait, 8-bit assets, layout, controls, and window behavior.
+
+## Superseded dual realtime voice override (v2.5)
+
+- Persist the semantic voice mode `realtime | expressive`; migrate legacy `eleven_v3_conversational` to `realtime` and `eleven_v3` to `expressive`.
+- Realtime uses Scribe v2 Realtime, the configured DeepSeek V4 Flash Custom LLM gateway, and Eleven v3 Conversational. Keep the microphone and caption partial stream active while the Agent speaks so native interruption remains available.
+- Realtime interruption must use the ElevenLabs `interruption` and `agent_response_correction` events to stop the current turn and correct visible/persisted assistant text.
+- Expressive mode keeps standalone `eleven_v3` synthesis, mutes the Agent audio and microphone during synthesis/playback, and is explicitly turn-based rather than interruptible.
+- ElevenAgent turn-taking uses `turn_model: turn_v3`, `turn_eagerness: normal`, and a 7-second `turn_timeout` fallback. Silence end-call and soft-timeout filler speech remain disabled.
+- DeepSeek Custom LLM, TTS, and turn configuration failures must be explicit. Do not fall back to Qwen, another LLM, or an older TTS model.
+- This v2.5 section supersedes the v2.4 30-second turn-timeout rule below. Preserve all capsule, character asset, layout, drag, and window behavior.
+
 ## Highest-priority continuous voice turn-taking override (v2.4 selected)
 
 - Give the user the full ElevenAgents-supported 30-second silence window before taking a turn. Keep `silence_end_call_timeout` and soft timeout disabled so silence never ends the session or emits filler speech.

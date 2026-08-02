@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { ELEVEN_V3_CONVERSATIONAL_MODEL_ID, isSupportedElevenTtsModel } from "../shared/model-contracts.js";
+import { VOICE_MODE_REALTIME, normalizeVoiceMode } from "../shared/model-contracts.js";
 import { sanitizeCharacterAssetConfig } from "./character-assets.js";
 
 export class JsonStore {
@@ -8,7 +8,7 @@ export class JsonStore {
     this.directory = directory;
     this.file = path.join(directory, "state.json");
     this.data = {
-      settings: { voiceId: "", microphoneId: "", ttsModelId: ELEVEN_V3_CONVERSATIONAL_MODEL_ID },
+      settings: { voiceId: "", microphoneId: "", voiceMode: VOICE_MODE_REALTIME },
       chat: [],
       window: null,
       locked: false,
@@ -28,9 +28,7 @@ export class JsonStore {
         settings: {
           voiceId: String(parsed.settings?.voiceId || "").trim().slice(0, 160),
           microphoneId: String(parsed.settings?.microphoneId || "").trim().slice(0, 512),
-          ttsModelId: isSupportedElevenTtsModel(parsed.settings?.ttsModelId)
-            ? parsed.settings.ttsModelId
-            : ELEVEN_V3_CONVERSATIONAL_MODEL_ID,
+          voiceMode: normalizeVoiceMode(parsed.settings?.voiceMode, parsed.settings?.ttsModelId),
         },
         secrets: { ...this.data.secrets, ...parsed.secrets },
         characterAssets: sanitizeCharacterAssetConfig(parsed.characterAssets),
