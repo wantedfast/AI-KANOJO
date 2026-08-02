@@ -38,7 +38,10 @@ describe("frontend conversation surfaces", () => {
 
     fireEvent.click(container.querySelector(".feature-companion"));
     expect(adapter.startVoice).toHaveBeenCalledOnce();
-    expect(adapter.startVoice).toHaveBeenCalledWith("");
+    expect(adapter.startVoice).toHaveBeenCalledWith("", {
+      voiceId: "",
+      ttsModelId: "eleven_v3_conversational",
+    });
     expect(screen.getByLabelText("简短语音对话")).toHaveTextContent("正在听");
 
     act(() => adapter.publish({ phase: "thinking", transcript: "今天过得怎么样？" }));

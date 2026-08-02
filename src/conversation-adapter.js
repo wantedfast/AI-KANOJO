@@ -1,4 +1,9 @@
 import { RealtimeScribe } from "./realtime-scribe.js";
+import {
+  ELEVEN_V3_CONVERSATIONAL_MODEL_ID,
+  ELEVEN_V3_MODEL_ID,
+  isSupportedElevenTtsModel,
+} from "../shared/model-contracts.js";
 
 const now = () => Date.now();
 
@@ -159,6 +164,14 @@ export const normalizeConversationClientError = (value) => {
   return message || "ElevenAgents 会话暂时不可用。";
 };
 
+export const sanitizeAgentReply = (value) => {
+  const text = String(value || "").trim();
+  const lines = text.split(/\r?\n/);
+  const routingLine = /^\s*(?:\[(?:language_detection|reason|language)\]|(?:use|switch(?:ing)?\s+to|respond(?:ing)?\s+in)\s+(?:chinese|english|japanese)\b)/i;
+  while (lines.length && routingLine.test(lines[0])) lines.shift();
+  return lines.join("\n").trim();
+};
+
 export function createElevenAgentsConversationAdapter({
   api,
   conversationClient,
@@ -171,6 +184,7 @@ export function createElevenAgentsConversationAdapter({
   recoveryTimeoutMs = 1200,
   logger = console,
   createCaptionTranscriber = (options) => new RealtimeScribe(options),
+  playStandaloneAudio,
 } = {}) {
   const store = createStore({ configured: false });
   let session = null;
@@ -182,12 +196,52 @@ export function createElevenAgentsConversationAdapter({
   let setupTimer = null;
   let recoveryTimer = null;
   let lastInputDeviceId = "";
+  let voicePreferences = { voiceId: "", ttsModelId: ELEVEN_V3_CONVERSATIONAL_MODEL_ID };
+  let standaloneOutputRun = 0;
+  let standaloneOutputPending = false;
+  let standaloneAudio = null;
+  let standaloneAudioUrl = "";
   let turnSequence = 0;
   let activeTurnId = "";
   let vadActive = false;
   let detachTranscriptionListener = null;
   let captionTranscriber = null;
   const sendTimers = new Map();
+
+  const usesStandaloneV3 = () => voicePreferences.ttsModelId === ELEVEN_V3_MODEL_ID;
+  const stopStandaloneOutput = () => {
+    standaloneOutputRun += 1;
+    standaloneOutputPending = false;
+    try {
+      standaloneAudio?.pause?.();
+    } catch {
+      // The session lifecycle is already closing.
+    }
+    standaloneAudio = null;
+    if (standaloneAudioUrl) URL.revokeObjectURL?.(standaloneAudioUrl);
+    standaloneAudioUrl = "";
+  };
+  const playAudioBytes = async (audioBytes) => {
+    if (playStandaloneAudio) return playStandaloneAudio(audioBytes);
+    const blob = new Blob([audioBytes], { type: "audio/mpeg" });
+    standaloneAudioUrl = URL.createObjectURL(blob);
+    standaloneAudio = new Audio(standaloneAudioUrl);
+    await standaloneAudio.play();
+    await new Promise((resolve) => {
+      let settled = false;
+      const settle = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      standaloneAudio.onended = settle;
+      standaloneAudio.onerror = settle;
+      standaloneAudio.onpause = settle;
+    });
+    if (standaloneAudioUrl) URL.revokeObjectURL(standaloneAudioUrl);
+    standaloneAudio = null;
+    standaloneAudioUrl = "";
+  };
 
   const nextMessageId = (role) => `${role}-${nowFn()}-${messageSequence += 1}`;
   const nextTurnId = () => `turn-${nowFn()}-${turnSequence += 1}`;
@@ -449,6 +503,7 @@ export function createElevenAgentsConversationAdapter({
   };
   const closeCurrentSession = async ({ reset = false, preserveSetupTimer = false } = {}) => {
     runId += 1;
+    stopStandaloneOutput();
     clearTimer(completionTimer);
     completionTimer = null;
     clearTimer(recoveryTimer);
@@ -484,6 +539,47 @@ export function createElevenAgentsConversationAdapter({
     });
   };
 
+  const speakStandaloneReply = async ({ text, turnId, currentRun }) => {
+    const outputRun = ++standaloneOutputRun;
+    standaloneOutputPending = true;
+    captionTranscriber?.setMuted?.(true);
+    await Promise.resolve(session?.setMicMuted?.(true)).catch(() => {});
+    try {
+      store.publish({ reply: text, phase: "thinking", voiceState: "Thinking", error: "" });
+      const audio = await api.synthesize({
+        text,
+        voiceId: voicePreferences.voiceId,
+        modelId: ELEVEN_V3_MODEL_ID,
+      });
+      if (currentRun !== runId || outputRun !== standaloneOutputRun || sessionKind !== "voice") return;
+      if (turnId) updateTurn(turnId, { status: "speaking", responseStarted: true });
+      store.publish({ phase: "speaking", voiceState: "Speaking" });
+      await playAudioBytes(audio);
+      if (currentRun !== runId || outputRun !== standaloneOutputRun || sessionKind !== "voice") return;
+      if (turnId) {
+        updateTurn(turnId, { status: "complete", responseCompleted: true });
+        logTurn(turnId, "responseCompleted");
+        logTurn(turnId, "listeningRestarted");
+      }
+      activeTurnId = "";
+      standaloneOutputPending = false;
+      await Promise.resolve(session?.setMicMuted?.(false)).catch(() => {});
+      captionTranscriber?.setMuted?.(false);
+      store.publish({ phase: "completed", voiceState: "Listening", activeTurnId: "" });
+      clearTimer(completionTimer);
+      completionTimer = setTimer(() => {
+        if (currentRun === runId && sessionKind === "voice" && !standaloneOutputPending) {
+          store.publish({ phase: "listening", voiceState: "Listening", reply: "" });
+        }
+      }, 320);
+    } catch (error) {
+      if (currentRun === runId && outputRun === standaloneOutputRun) {
+        standaloneOutputPending = false;
+        publishError(error);
+      }
+    }
+  };
+
   const sessionCallbacks = (currentRun, kind) => ({
     onConnect: () => {
       if (currentRun !== runId) return;
@@ -497,7 +593,8 @@ export function createElevenAgentsConversationAdapter({
     onMessage: ({ message, role, source }) => {
       if (currentRun !== runId) return;
       const normalizedRole = role === "agent" || source === "ai" ? "assistant" : "user";
-      const text = String(message || "").trim();
+      const rawText = String(message || "").trim();
+      const text = normalizedRole === "assistant" ? sanitizeAgentReply(rawText) : rawText;
       if (!text) return;
       appendMessage(normalizedRole, text);
       if (normalizedRole === "user") {
@@ -528,8 +625,16 @@ export function createElevenAgentsConversationAdapter({
         if (turnId) {
           const turn = findTurn(turnId);
           if (!turn?.responseStarted) logTurn(turnId, "responseStarted");
-          updateTurn(turnId, { status: "speaking", responseStarted: true });
+          updateTurn(turnId, { status: usesStandaloneV3() ? "thinking" : "speaking", responseStarted: true });
           activeTurnId = turnId;
+        }
+        if (kind === "voice" && usesStandaloneV3()) {
+          if (!voicePreferences.voiceId) {
+            publishError("标准 Eleven v3 需要先选择一个 ElevenLabs 音色。");
+            return;
+          }
+          void speakStandaloneReply({ text, turnId, currentRun });
+          return;
         }
         store.publish({
           reply: text,
@@ -543,6 +648,21 @@ export function createElevenAgentsConversationAdapter({
     onModeChange: ({ mode }) => {
       if (currentRun !== runId || kind !== "voice") return;
       clearTimer(completionTimer);
+      if (usesStandaloneV3()) {
+        if (mode === "speaking" || standaloneOutputPending) {
+          vadActive = false;
+          captionTranscriber?.setMuted?.(true);
+          Promise.resolve(session?.setMicMuted?.(true)).catch((error) => publishError(error.message));
+          if (!standaloneOutputPending) store.publish({ phase: "thinking", voiceState: "Thinking" });
+          return;
+        }
+        Promise.resolve(session?.setMicMuted?.(false)).catch((error) => publishError(error.message));
+        captionTranscriber?.setMuted?.(false);
+        if (!["transcribing", "sending", "thinking", "paused", "error"].includes(store.getSnapshot().phase)) {
+          store.publish({ phase: "listening", voiceState: "Listening" });
+        }
+        return;
+      }
       if (mode === "speaking") {
         vadActive = false;
         captionTranscriber?.setMuted?.(true);
@@ -659,6 +779,9 @@ export function createElevenAgentsConversationAdapter({
     session = created;
     sessionKind = kind;
     if (kind === "voice") {
+      await Promise.resolve(created?.setVolume?.({ volume: usesStandaloneV3() ? 0 : 1 }));
+    }
+    if (kind === "voice") {
       attachWebRtcTranscription(created, currentRun);
       void captionTokenPromise.then((captionToken) => {
         if (currentRun === runId) return startCaptionTranscriber({
@@ -673,8 +796,14 @@ export function createElevenAgentsConversationAdapter({
     return created;
   };
 
-  const startVoice = (inputDeviceId = "") => {
+  const startVoice = (inputDeviceId = "", preferences = voicePreferences) => {
     lastInputDeviceId = String(inputDeviceId || "").trim();
+    voicePreferences = {
+      voiceId: String(preferences?.voiceId || voicePreferences.voiceId || "").trim(),
+      ttsModelId: isSupportedElevenTtsModel(preferences?.ttsModelId)
+        ? preferences.ttsModelId
+        : ELEVEN_V3_CONVERSATIONAL_MODEL_ID,
+    };
     store.publish({
       phase: "connecting",
       voiceState: "Idle",
@@ -777,6 +906,7 @@ export function createElevenAgentsConversationAdapter({
         return;
       }
       if (sessionKind !== "voice" || !session) return;
+      if (usesStandaloneV3()) stopStandaloneOutput();
       captionTranscriber?.setMuted?.(true);
       Promise.resolve(session.setMicMuted?.(true)).catch((error) => publishError(error.message));
       store.publish({ phase: "paused", voiceState: "Idle" });

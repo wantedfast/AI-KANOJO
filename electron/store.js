@@ -1,12 +1,13 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { ELEVEN_V3_CONVERSATIONAL_MODEL_ID, isSupportedElevenTtsModel } from "../shared/model-contracts.js";
 
 export class JsonStore {
   constructor(directory) {
     this.directory = directory;
     this.file = path.join(directory, "state.json");
     this.data = {
-      settings: { voiceId: "", microphoneId: "" },
+      settings: { voiceId: "", microphoneId: "", ttsModelId: ELEVEN_V3_CONVERSATIONAL_MODEL_ID },
       chat: [],
       window: null,
       locked: false,
@@ -25,6 +26,9 @@ export class JsonStore {
         settings: {
           voiceId: String(parsed.settings?.voiceId || "").trim().slice(0, 160),
           microphoneId: String(parsed.settings?.microphoneId || "").trim().slice(0, 512),
+          ttsModelId: isSupportedElevenTtsModel(parsed.settings?.ttsModelId)
+            ? parsed.settings.ttsModelId
+            : ELEVEN_V3_CONVERSATIONAL_MODEL_ID,
         },
         secrets: { ...this.data.secrets, ...parsed.secrets },
         elevenAgents: {

@@ -6,7 +6,11 @@ import {
   inspectElevenAgentConfig,
   listElevenVoices,
 } from "../electron/elevenagents-provider.js";
-import { ELEVENAGENTS_BASE_PROMPT, ELEVENAGENTS_EXPECTED_CONFIG } from "../shared/elevenagents-contracts.js";
+import {
+  ELEVENAGENTS_BASE_PROMPT,
+  ELEVENAGENTS_EXPECTED_CONFIG,
+  ELEVENAGENTS_LANGUAGE_DETECTION_TOOL,
+} from "../shared/elevenagents-contracts.js";
 
 const validAgent = (overrides = {}) => ({
   agent_id: "agent_7101k5zvyjhmfg983brhmhkd98n6",
@@ -23,7 +27,7 @@ const validAgent = (overrides = {}) => ({
         llm: "qwen36-35b-a3b",
         prompt: ELEVENAGENTS_BASE_PROMPT,
         ignore_default_personality: true,
-        built_in_tools: { language_detection: { type: "system", name: "language_detection" } },
+        built_in_tools: { language_detection: structuredClone(ELEVENAGENTS_LANGUAGE_DETECTION_TOOL) },
         thinking_budget: 0,
         enable_reasoning_summary: false,
         backup_llm_config: { preference: "disabled" },
@@ -95,6 +99,12 @@ describe("ElevenAgents provider", () => {
     const patchCall = fetchImpl.mock.calls.find(([, options = {}]) => options.method === "PATCH");
     const body = JSON.parse(patchCall[1].body);
     expect(body.conversation_config.agent.prompt).toMatchObject({ llm: "qwen36-35b-a3b", thinking_budget: 0, enable_reasoning_summary: false });
+    expect(body.conversation_config.agent.prompt.built_in_tools.language_detection).toMatchObject({
+      pre_tool_speech: "off",
+      params: { system_tool_type: "language_detection" },
+    });
+    expect(body.conversation_config.agent.prompt.built_in_tools.language_detection).not.toHaveProperty("tool_call_sound");
+    expect(body.conversation_config.agent.prompt.prompt).toContain("Return only the user-facing reply");
     expect(body.conversation_config.agent.prompt.custom_llm).toBeNull();
     expect(body.conversation_config.agent.language).toBe("zh");
     expect(Object.keys(body.conversation_config.language_presets).sort()).toEqual(["en", "ja"]);
@@ -185,6 +195,15 @@ describe("ElevenAgents provider", () => {
       code: "TTS_MODEL_MISMATCH",
       field: "conversation_config.tts.fallback",
     }));
+  });
+
+  it("rejects a non-system language detection tool", () => {
+    const agent = validAgent();
+    agent.conversation_config.agent.prompt.built_in_tools.language_detection.params.system_tool_type = "end_call";
+    expect(inspectElevenAgentConfig(agent)).toMatchObject({
+      ok: false,
+      issues: [expect.objectContaining({ field: "conversation_config.agent.prompt.built_in_tools.language_detection" })],
+    });
   });
 
   it("creates a WebRTC token with the official endpoint", async () => {

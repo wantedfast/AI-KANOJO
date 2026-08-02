@@ -110,7 +110,7 @@ if (
   || Math.abs(report.renderer.minimizeToggle.expandedWidth - 520) > 1
   || !report.renderer.settingsVisible
   || !report.renderer.settingsLayout?.aligned
-  || report.renderer.settingsLayout.fieldCount !== 2
+  || report.renderer.settingsLayout.fieldCount !== 3
 ) {
   throw new Error(`Renderer smoke assertions failed: ${JSON.stringify(report.renderer)}`);
 }

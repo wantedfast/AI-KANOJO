@@ -17,7 +17,7 @@ describe("flat spectrum feature rail", () => {
     const runtimeApi = {
       isDesktop: false,
       getBootstrap: async () => ({
-        settings: { voiceId: "oldVoice1234567890ab", microphoneId: "" },
+        settings: { voiceId: "oldVoice1234567890ab", microphoneId: "", ttsModelId: "eleven_v3_conversational" },
         chat: [],
         credentials: { deepseek: true, elevenlabs: true },
         locked: false,
@@ -38,10 +38,14 @@ describe("flat spectrum feature rail", () => {
     expect(voiceSelect).toHaveValue("oldVoice1234567890ab");
     expect(screen.getByRole("option", { name: /雪之乃/ })).toBeInTheDocument();
     fireEvent.change(voiceSelect, { target: { value: "YyODrkDd1qMUj9jupJch" } });
+    const modelSelect = screen.getByRole("combobox", { name: "语音模型" });
+    expect(modelSelect).toHaveValue("eleven_v3_conversational");
+    expect(screen.getByRole("option", { name: /Eleven v3 · 表现力优先/ })).toBeInTheDocument();
+    fireEvent.change(modelSelect, { target: { value: "eleven_v3" } });
     fireEvent.click(screen.getByRole("button", { name: "应用并保存设置" }));
     await act(async () => Promise.resolve());
 
-    expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({ voiceId: "YyODrkDd1qMUj9jupJch" }));
+    expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({ voiceId: "YyODrkDd1qMUj9jupJch", ttsModelId: "eleven_v3" }));
     expect(screen.getByText("选择后将同步到语音 Agent，下次语音对话生效")).toBeInTheDocument();
     expect(screen.queryByText("固定模型")).not.toBeInTheDocument();
     expect(screen.queryByText("DeepSeek API Key")).not.toBeInTheDocument();

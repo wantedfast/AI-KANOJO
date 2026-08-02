@@ -2,13 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createElevenAgentsConversationAdapter,
   normalizeConversationClientError,
+  sanitizeAgentReply,
 } from "../src/conversation-adapter.js";
 
 const configuredStatus = { configured: true, issues: [] };
 
 afterEach(() => vi.unstubAllGlobals());
 
-const createHarness = ({ credential, sendTimeoutMs = 8000, createCaptionTranscriber } = {}) => {
+const createHarness = ({ credential, sendTimeoutMs = 8000, createCaptionTranscriber, playStandaloneAudio } = {}) => {
   let callbacks;
   const roomListeners = new Map();
   const clonedMicrophoneTrack = { enabled: true, stop: vi.fn() };
@@ -31,6 +32,7 @@ const createHarness = ({ credential, sendTimeoutMs = 8000, createCaptionTranscri
     endSession: vi.fn(async () => {}),
     sendUserMessage: vi.fn(),
     setMicMuted: vi.fn(),
+    setVolume: vi.fn(),
     connection: { getRoom: () => room },
   };
   const conversationClient = {
@@ -55,6 +57,7 @@ const createHarness = ({ credential, sendTimeoutMs = 8000, createCaptionTranscri
       onDelta?.("there");
       return "Hi there";
     }),
+    synthesize: vi.fn(async () => new Uint8Array([1, 2, 3])),
   };
   const logs = [];
   const logger = {
@@ -68,6 +71,7 @@ const createHarness = ({ credential, sendTimeoutMs = 8000, createCaptionTranscri
     sendTimeoutMs,
     logger,
     ...(createCaptionTranscriber ? { createCaptionTranscriber } : {}),
+    ...(playStandaloneAudio ? { playStandaloneAudio } : {}),
   });
   return { adapter, api, conversationClient, session, room, logs, getCallbacks: () => callbacks };
 };
@@ -77,6 +81,32 @@ describe("ElevenAgents renderer adapter", () => {
     expect(normalizeConversationClientError("Server error: unknown server")).toContain("Qwen");
     expect(normalizeConversationClientError("custom_llm_error: Failed to generate response from custom LLM")).toContain("Qwen");
     expect(normalizeConversationClientError(new DOMException("Permission denied", "NotAllowedError"))).toContain("麦克风");
+  });
+
+  it("removes leaked language routing metadata from an agent reply", () => {
+    expect(sanitizeAgentReply("[language_detection] User switched to Chinese. [reason] Changed. [language] zh\n你好，很高兴见到你。")).toBe("你好，很高兴见到你。");
+    expect(sanitizeAgentReply("Use Chinese.\n你好，很高兴见到你。")).toBe("你好，很高兴见到你。");
+    expect(sanitizeAgentReply("[laughs] 当然可以。")).toBe("[laughs] 当然可以。");
+  });
+
+  it("mutes Agent audio and uses standalone Eleven v3 when selected", async () => {
+    const playStandaloneAudio = vi.fn(async () => {});
+    const { adapter, api, session, getCallbacks } = createHarness({ playStandaloneAudio });
+    adapter.startVoice("mic-1", { voiceId: "YyODrkDd1qMUj9jupJch", ttsModelId: "eleven_v3" });
+    await vi.waitFor(() => expect(session.setVolume).toHaveBeenCalledWith({ volume: 0 }));
+
+    getCallbacks().onVadScore({ vadScore: 0.8 });
+    getCallbacks().onMessage({ role: "user", message: "你好" });
+    getCallbacks().onMessage({ role: "agent", message: "[language_detection] User switched to Chinese. [reason] Changed. [language] zh\n你好呀。" });
+
+    await vi.waitFor(() => expect(api.synthesize).toHaveBeenCalledWith({
+      text: "你好呀。",
+      voiceId: "YyODrkDd1qMUj9jupJch",
+      modelId: "eleven_v3",
+    }));
+    await vi.waitFor(() => expect(playStandaloneAudio).toHaveBeenCalledOnce());
+    expect(adapter.getSnapshot().reply).toBe("你好呀。");
+    expect(adapter.getSnapshot().messages.at(-1).content).toBe("你好呀。");
   });
 
   it("opens voice with a WebRTC token and maps transcript, reply, pause and resume", async () => {

@@ -7,6 +7,7 @@ import { createScribeToken, streamDeepSeek, synthesizeElevenV3 } from "./provide
 import { importDesktopCredentials } from "./credential-import.js";
 import { ElevenAgentsService } from "./elevenagents-service.js";
 import { toSafeElevenAgentsError } from "../shared/elevenagents-contracts.js";
+import { ELEVEN_V3_CONVERSATIONAL_MODEL_ID, isSupportedElevenTtsModel } from "../shared/model-contracts.js";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(directory, "..");
@@ -229,6 +230,9 @@ function installIpc() {
     const sanitized = {
       voiceId: String(settings.voiceId || "").trim().slice(0, 160),
       microphoneId: String(settings.microphoneId || "").trim().slice(0, 512),
+      ttsModelId: isSupportedElevenTtsModel(settings.ttsModelId)
+        ? settings.ttsModelId
+        : ELEVEN_V3_CONVERSATIONAL_MODEL_ID,
     };
     const currentVoiceId = String(store.get().settings?.voiceId || "").trim();
     if (sanitized.voiceId !== currentVoiceId) {
@@ -282,6 +286,7 @@ function installIpc() {
       apiKey: decrypt("elevenlabs"),
       voiceId: payload.voiceId,
       text: payload.text,
+      modelId: payload.modelId,
       signal: activeRequest.signal,
     });
   });
@@ -531,7 +536,8 @@ async function runSmokeCheck(reportPath) {
       return {
         visible: Boolean(panel),
         fieldCount: selects.length,
-        aligned: selects.length === 2 && Math.abs(selects[0].top - selects[1].top) <= 1 && Math.abs(selects[0].height - selects[1].height) <= 1,
+        aligned: selects.length === 3
+          && selects.every((select) => Math.abs(select.top - selects[0].top) <= 1 && Math.abs(select.height - selects[0].height) <= 1),
         selects,
       };
     })()

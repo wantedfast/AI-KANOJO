@@ -2,6 +2,7 @@ import {
   ELEVENAGENTS_ERROR_CODES as CODES,
   ELEVENAGENTS_EXPECTED_CONFIG as EXPECTED,
   ELEVENAGENTS_BASE_PROMPT,
+  ELEVENAGENTS_LANGUAGE_DETECTION_TOOL,
   ElevenAgentsBackendError,
   isValidAgentId,
   isValidVoiceId,
@@ -43,11 +44,13 @@ const requestJson = async ({ url, apiKey, signal, fetchImpl, operation }) => {
   }
 };
 
-export const getElevenAgent = async ({ apiKey, agentId, signal, fetchImpl = fetch }) => {
+export const getElevenAgent = async ({ apiKey, agentId, branchId = "", signal, fetchImpl = fetch }) => {
   const normalized = normalizeAgentId(agentId);
   if (!isValidAgentId(normalized)) throw new ElevenAgentsBackendError(CODES.AGENT_ID_INVALID, "ElevenAgent ID 格式无效。");
+  const url = new URL(`${API_BASE}/v1/convai/agents/${encodeURIComponent(normalized)}`);
+  if (branchId) url.searchParams.set("branch_id", String(branchId));
   return requestJson({
-    url: `${API_BASE}/v1/convai/agents/${encodeURIComponent(normalized)}`,
+    url: url.toString(),
     apiKey,
     signal,
     fetchImpl,
@@ -131,7 +134,7 @@ const buildConfiguredConversationConfig = (agent, modelId, voiceId) => {
     ignore_default_personality: true,
     built_in_tools: {
       ...(prompt.built_in_tools || {}),
-      language_detection: { type: "system", name: "language_detection" },
+      language_detection: structuredClone(ELEVENAGENTS_LANGUAGE_DETECTION_TOOL),
     },
     thinking_budget: 0,
     enable_reasoning_summary: false,
@@ -199,10 +202,13 @@ export const configureElevenAgent = async ({ apiKey, agentId, voiceId, signal, f
     ...(normalizedVoiceId ? [getElevenVoice({ apiKey, voiceId: normalizedVoiceId, signal, fetchImpl })] : []),
   ]);
   const modelId = resolveQwenModelId(models);
+  const branchId = String(agent?.main_branch_id || agent?.branch_id || "").trim();
+  const updateUrl = new URL(`${API_BASE}/v1/convai/agents/${encodeURIComponent(normalized)}`);
+  if (branchId) updateUrl.searchParams.set("branch_id", branchId);
   const conversationConfig = buildConfiguredConversationConfig(agent, modelId, normalizedVoiceId);
   let response;
   try {
-    response = await fetchImpl(`${API_BASE}/v1/convai/agents/${encodeURIComponent(normalized)}`, {
+    response = await fetchImpl(updateUrl.toString(), {
       method: "PATCH",
       headers: { "xi-api-key": apiKey, Accept: "application/json", "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -240,12 +246,17 @@ export const configureElevenAgent = async ({ apiKey, agentId, voiceId, signal, f
     }
     throw error;
   }
+  let updatePayload;
   try {
-    await response.json();
+    updatePayload = await response.json();
   } catch {
     throw new ElevenAgentsBackendError(CODES.PROVIDER_UNAVAILABLE, "ElevenLabs returned an invalid update response.");
   }
-  const updated = await getElevenAgent({ apiKey, agentId: normalized, signal, fetchImpl });
+  const updateValidation = inspectElevenAgentConfig(updatePayload);
+  if (!updateValidation.ok) {
+    throw new ElevenAgentsBackendError(CODES.AGENT_CONFIG_MISMATCH, updateValidation.issues[0]?.message || "The ElevenAgent update was not applied.");
+  }
+  const updated = await getElevenAgent({ apiKey, agentId: normalized, branchId, signal, fetchImpl });
   const validation = inspectElevenAgentConfig(updated);
   if (!validation.ok) {
     throw new ElevenAgentsBackendError(CODES.AGENT_CONFIG_MISMATCH, validation.issues[0]?.message || "The updated ElevenAgent configuration is invalid.");
@@ -289,8 +300,11 @@ export const inspectElevenAgentConfig = (agent) => {
   if (prompt.ignore_default_personality !== true) {
     issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.agent.prompt.ignore_default_personality", "必须关闭 ElevenAgents 默认人格。"));
   }
-  if (!prompt.built_in_tools?.language_detection) {
+  const languageTool = prompt.built_in_tools?.language_detection;
+  if (!languageTool) {
     issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.agent.prompt.built_in_tools.language_detection", "必须启用语言检测系统工具。"));
+  } else if (languageTool.params?.system_tool_type !== "language_detection") {
+    issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.agent.prompt.built_in_tools.language_detection", "语言检测必须静默执行，且不得播报工具或语言路由信息。"));
   }
   if (EXPECTED.supportedLanguages.some((language) => !languages.has(language)) || [...languages].some((language) => !EXPECTED.supportedLanguages.includes(language))) {
     issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.language_presets", "Agent 只允许并必须支持中文、英文和日语。"));

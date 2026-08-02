@@ -3,7 +3,7 @@ import path from "node:path";
 import { JsonStore } from "../electron/store.js";
 import { ElevenAgentsService } from "../electron/elevenagents-service.js";
 import { createElevenAgentsSignedUrl, getElevenAgent, listElevenAgentLlms } from "../electron/elevenagents-provider.js";
-import { streamDeepSeek } from "../electron/providers.js";
+import { streamDeepSeek, synthesizeElevenV3 } from "../electron/providers.js";
 import { toSafeElevenAgentsError } from "../shared/elevenagents-contracts.js";
 import WebSocket from "ws";
 import { Conversation } from "@elevenlabs/client";
@@ -18,13 +18,8 @@ const safeDiagnostic = (error) => String(error?.message || error || "Unknown fai
 const verifySdkTextTurn = async ({ signedUrl, timeoutMs = 20_000 }) => {
   let session;
   let conversationId = "";
-  let resolveReply;
-  let rejectReply;
-  const reply = new Promise((resolve, reject) => {
-    resolveReply = resolve;
-    rejectReply = reject;
-  });
-  const timeout = setTimeout(() => rejectReply(new Error("ElevenAgents SDK text turn timed out.")), timeoutMs);
+  let resolveReply = null;
+  let rejectReply = null;
   try {
     session = await Conversation.startSession({
       signedUrl,
@@ -32,21 +27,44 @@ const verifySdkTextTurn = async ({ signedUrl, timeoutMs = 20_000 }) => {
       textOnly: true,
       onConnect: (event) => { conversationId = event?.conversationId || ""; },
       onMessage: ({ message, role, source }) => {
-        if (role === "agent" || source === "ai") resolveReply(String(message || ""));
+        if (role === "agent" || source === "ai") resolveReply?.(String(message || ""));
       },
-      onError: (message) => rejectReply(new Error(String(message || "ElevenAgents SDK error"))),
+      onError: (message) => rejectReply?.(new Error(String(message || "ElevenAgents SDK error"))),
       onDisconnect: (details) => {
-        if (details?.reason === "error") rejectReply(new Error(details.message || "ElevenAgents SDK disconnected"));
+        if (details?.reason === "error") rejectReply?.(new Error(details.message || "ElevenAgents SDK disconnected"));
       },
     });
-    session.sendUserMessage("Reply with exactly OK.");
-    const response = await reply;
-    return { connected: true, conversationId, turnReplyReceived: Boolean(response.trim()) };
+    const replies = [];
+    for (const message of [
+      "Reply with exactly OK.",
+      "请只回复：好的。",
+      "『はい。』だけで答えてください。",
+    ]) {
+      const response = await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("ElevenAgents SDK text turn timed out.")), timeoutMs);
+        resolveReply = (value) => { clearTimeout(timeout); resolve(value); };
+        rejectReply = (error) => { clearTimeout(timeout); reject(error); };
+        session.sendUserMessage(message);
+      });
+      replies.push(response.trim());
+      resolveReply = null;
+      rejectReply = null;
+    }
+    const routingMetadata = /^\s*\[(?:language_detection|reason|language)\]/im;
+    if (replies.some((reply) => routingMetadata.test(reply))) {
+      throw new Error("ElevenAgents exposed language-routing metadata in an agent reply.");
+    }
+    return {
+      connected: true,
+      conversationId,
+      completedTurns: replies.length,
+      allRepliesReceived: replies.every(Boolean),
+      routingMetadataLeaked: false,
+    };
   } catch (error) {
     error.conversationId ||= conversationId;
     throw error;
   } finally {
-    clearTimeout(timeout);
     await session?.endSession?.().catch(() => {});
   }
 };
@@ -80,6 +98,13 @@ app.whenReady().then(async () => {
     const llmList = await listElevenAgentLlms({ apiKey: getApiKey() });
     configDiagnostic = {
       currentModelId: String(beforeAgent?.conversation_config?.agent?.prompt?.llm || ""),
+      currentVersionId: String(beforeAgent?.version_id || ""),
+      currentBranchId: String(beforeAgent?.branch_id || ""),
+      mainBranchId: String(beforeAgent?.main_branch_id || ""),
+      workflowPresent: Boolean(beforeAgent?.workflow),
+      workflowKeys: Object.keys(beforeAgent?.workflow || {}).slice(0, 20),
+      workflowNodeTypes: Object.values(beforeAgent?.workflow?.nodes || {}).map((node) => String(node?.type || "")).slice(0, 20),
+      currentLanguageTool: beforeAgent?.conversation_config?.agent?.prompt?.built_in_tools?.language_detection || null,
       qwenModels: (llmList?.llms || []).map((item) => String(item?.llm || "")).filter((id) => /qwen/i.test(id)),
     };
     stage = "configure-agent";
@@ -93,6 +118,8 @@ app.whenReady().then(async () => {
     configDiagnostic = {
       modelId: String(prompt.llm || ""),
       customLlmPresent: prompt.custom_llm != null,
+      languagePreToolSpeech: String(prompt.built_in_tools?.language_detection?.pre_tool_speech || ""),
+      languageToolCallSound: String(prompt.built_in_tools?.language_detection?.tool_call_sound || ""),
       asrProvider: String(rawAgent?.conversation_config?.asr?.provider || ""),
       ttsModelId: String(rawAgent?.conversation_config?.tts?.model_id || ""),
       voiceConfigured: Boolean(rawAgent?.conversation_config?.tts?.voice_id),
@@ -106,6 +133,14 @@ app.whenReady().then(async () => {
       apiKey: decryptStored("deepseek"),
       messages: [{ role: "user", content: "Reply with exactly OK." }],
       signal: AbortSignal.timeout(20_000),
+    });
+    stage = "standard-v3-tts";
+    const standardV3Audio = await synthesizeElevenV3({
+      apiKey: getApiKey(),
+      voiceId: rawAgent?.conversation_config?.tts?.voice_id,
+      text: "测试。",
+      modelId: "eleven_v3",
+      signal: AbortSignal.timeout(30_000),
     });
     finish({
       ok: true,
@@ -123,6 +158,7 @@ app.whenReady().then(async () => {
       },
       handshake,
       directText: { replyReceived: Boolean(String(directTextReply || "").trim()) },
+      standardV3: { audioBytesReceived: standardV3Audio.byteLength > 0 },
     });
   } catch (error) {
     let conversationDiagnostic = null;

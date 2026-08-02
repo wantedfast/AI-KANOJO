@@ -119,9 +119,10 @@ export async function createScribeToken(apiKey, signal) {
   return data.token;
 }
 
-export async function synthesizeElevenV3({ apiKey, voiceId, text, signal }) {
+export async function synthesizeElevenV3({ apiKey, voiceId, text, modelId = ELEVEN_V3_MODEL_ID, signal }) {
   if (!apiKey) throw new Error("尚未配置 ElevenLabs API Key");
   if (!voiceId) throw new Error("尚未配置 ElevenLabs Voice ID");
+  if (modelId !== ELEVEN_V3_MODEL_ID) throw new Error("独立语音合成仅支持 Eleven v3");
   const response = await checked(await fetch(`${ELEVEN_URL}/text-to-speech/${encodeURIComponent(voiceId)}/stream?output_format=mp3_44100_128`, {
     method: "POST",
     headers: {
@@ -131,7 +132,7 @@ export async function synthesizeElevenV3({ apiKey, voiceId, text, signal }) {
     },
     body: JSON.stringify({
       text,
-      model_id: ELEVEN_V3_MODEL_ID,
+      model_id: modelId,
       voice_settings: { stability: 0.48, similarity_boost: 0.78, style: 0.18 },
     }),
     signal,
