@@ -181,7 +181,14 @@ const buildConfiguredConversationConfig = (agent, modelId, voiceId) => {
   delete tts.fallback_model_id;
   delete tts.fallback_model_ids;
   config.tts = tts;
-  config.turn = { ...(config.turn || {}), turn_eagerness: EXPECTED.turnEagerness };
+  config.turn = {
+    ...(config.turn || {}),
+    turn_eagerness: EXPECTED.turnEagerness,
+    soft_timeout_config: {
+      timeout_seconds: EXPECTED.softTimeoutSeconds,
+      message: "",
+    },
+  };
   config.conversation = {
     ...(config.conversation || {}),
     client_events: [...new Set([...(config.conversation?.client_events || []), "interruption", "user_transcript"])],
@@ -341,6 +348,13 @@ export const inspectElevenAgentConfig = (agent) => {
   }
   if (turn.turn_eagerness !== EXPECTED.turnEagerness) {
     issues.push(issue(CODES.TURN_CONFIG_MISMATCH, "conversation_config.turn.turn_eagerness", "Turn eagerness 必须为 normal。"));
+  }
+  if (Number(turn.soft_timeout_config?.timeout_seconds) !== EXPECTED.softTimeoutSeconds) {
+    issues.push(issue(
+      CODES.TURN_CONFIG_MISMATCH,
+      "conversation_config.turn.soft_timeout_config",
+      "Soft timeout 必须禁用，避免填充语与正式回复重叠。",
+    ));
   }
   if (!clientEvents.includes("interruption") || config.agent?.disable_first_message_interruptions === true) {
     issues.push(issue(CODES.TURN_CONFIG_MISMATCH, "conversation_config.conversation.client_events", "ElevenAgent 必须启用用户打断。"));

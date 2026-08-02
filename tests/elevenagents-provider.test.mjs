@@ -17,7 +17,10 @@ const validAgent = (overrides = {}) => ({
   conversation_config: {
     language_presets: { en: {}, ja: {} },
     asr: { provider: "scribe_realtime" },
-    turn: { turn_eagerness: "normal" },
+    turn: {
+      turn_eagerness: "normal",
+      soft_timeout_config: { timeout_seconds: -1, message: "" },
+    },
     tts: { model_id: "eleven_v3_conversational", voice_id: "voice_1234567890" },
     conversation: { client_events: ["audio", "interruption", "user_transcript"] },
     agent: {
@@ -83,6 +86,10 @@ describe("ElevenAgents provider", () => {
     existing.conversation_config.agent.prompt.llm = "custom-llm";
     existing.conversation_config.agent.prompt.custom_llm = { model_id: "deepseek-v4-flash", api_key: { secret_id: "secret" } };
     existing.conversation_config.tts.stability = 0.42;
+    existing.conversation_config.turn.soft_timeout_config = {
+      timeout_seconds: 3,
+      message: "Are you still there?",
+    };
     const published = validAgent({ name: existing.name });
     published.conversation_config.tts.stability = 0.42;
     const fetchImpl = vi.fn(async (url, options = {}) => {
@@ -109,6 +116,7 @@ describe("ElevenAgents provider", () => {
     expect(body.conversation_config.agent.language).toBe("zh");
     expect(Object.keys(body.conversation_config.language_presets).sort()).toEqual(["en", "ja"]);
     expect(body.conversation_config.tts).toMatchObject({ model_id: "eleven_v3_conversational", stability: 0.42 });
+    expect(body.conversation_config.turn.soft_timeout_config).toEqual({ timeout_seconds: -1, message: "" });
     expect(JSON.stringify(body)).not.toContain("secret");
   });
 
@@ -194,6 +202,20 @@ describe("ElevenAgents provider", () => {
     expect(result.issues).toContainEqual(expect.objectContaining({
       code: "TTS_MODEL_MISMATCH",
       field: "conversation_config.tts.fallback",
+    }));
+  });
+
+  it("rejects an enabled soft timeout that can speak over the real reply", () => {
+    const agent = validAgent();
+    agent.conversation_config.turn.soft_timeout_config = {
+      timeout_seconds: 3,
+      message: "Are you still there?",
+    };
+    const result = inspectElevenAgentConfig(agent);
+    expect(result.ok).toBe(false);
+    expect(result.issues).toContainEqual(expect.objectContaining({
+      code: "TURN_CONFIG_MISMATCH",
+      field: "conversation_config.turn.soft_timeout_config",
     }));
   });
 
