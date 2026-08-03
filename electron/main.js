@@ -387,12 +387,52 @@ async function runSmokeCheck(reportPath) {
     (async () => {
       const avatar = document.querySelector(".avatar-button");
       const beforeIdle = document.querySelector(".state-idle") !== null;
+      const microphone = document.querySelector('[aria-label="开始语音对话"]');
+      microphone?.focus();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      const picker = document.querySelector('.voice-mode-menu');
+      const runtimeAvatar = document.querySelector('.runtime-avatar-slot');
+      const codex = document.querySelector('.codex-status');
+      const rect = (element) => {
+        const value = element?.getBoundingClientRect();
+        return value ? { x: value.x, y: value.y, width: value.width, height: value.height, right: value.right, bottom: value.bottom } : null;
+      };
+      const pickerRect = rect(picker);
+      const avatarRect = rect(runtimeAvatar);
+      const codexRect = rect(codex);
+      const choices = Array.from(picker?.querySelectorAll('[role="menuitemradio"]') || []).map((choice) => ({
+        label: choice.textContent.replace(/\\s+/g, ' ').trim(),
+        checked: choice.getAttribute('aria-checked'),
+      }));
+      const voiceModePicker = {
+        present: Boolean(picker),
+        pickerRect,
+        choiceCount: choices.length,
+        choices,
+        checkedCount: choices.filter((choice) => choice.checked === 'true').length,
+        overlapsAvatar: Boolean(pickerRect && avatarRect && pickerRect.x < avatarRect.right && pickerRect.right > avatarRect.x && pickerRect.y < avatarRect.bottom && pickerRect.bottom > avatarRect.y),
+        overlapsCodex: Boolean(pickerRect && codexRect && pickerRect.x < codexRect.right && pickerRect.right > codexRect.x && pickerRect.y < codexRect.bottom && pickerRect.bottom > codexRect.y),
+      };
+      microphone?.blur();
+      await new Promise((resolve) => setTimeout(resolve, 20));
       avatar.click();
       await new Promise((resolve) => setTimeout(resolve, 80));
       const afterListening = document.querySelector(".state-listening") !== null;
-      return { beforeIdle, afterListening };
+      return { beforeIdle, afterListening, voiceModePicker };
     })()
   `, true);
+  if (renderer.voiceModePicker.pickerRect) {
+    const pickerCenter = {
+      x: renderer.voiceModePicker.pickerRect.x + renderer.voiceModePicker.pickerRect.width / 2,
+      y: renderer.voiceModePicker.pickerRect.y + renderer.voiceModePicker.pickerRect.height / 2,
+    };
+    renderer.voiceModePicker.hitTracked = false;
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      renderer.voiceModePicker.hitTracked = hitRegions.some((region) => pointInside(pickerCenter, region));
+      if (renderer.voiceModePicker.hitTracked) break;
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    }
+  }
   await new Promise((resolve) => setTimeout(resolve, 280));
   renderer.portrait = await window.webContents.executeJavaScript(`
     (() => {

@@ -74,6 +74,12 @@ if (report.window.persistedAfterDrag.x !== report.window.moved.x || report.windo
 if (
   !report.renderer.beforeIdle
   || !report.renderer.afterListening
+  || !report.renderer.voiceModePicker?.present
+  || report.renderer.voiceModePicker.choiceCount !== 2
+  || report.renderer.voiceModePicker.checkedCount !== 1
+  || report.renderer.voiceModePicker.overlapsAvatar
+  || report.renderer.voiceModePicker.overlapsCodex
+  || !report.renderer.voiceModePicker.hitTracked
   || !report.renderer.beforeExternalStop
   || !report.renderer.afterExternalStop
   || !report.renderer.resleepAvatar?.idle

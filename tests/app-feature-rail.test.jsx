@@ -8,6 +8,60 @@ afterEach(() => {
 });
 
 describe("flat spectrum feature rail", () => {
+  it("offers voice modes from the microphone and starts the selected mode immediately", async () => {
+    vi.useFakeTimers();
+    const saveSettings = vi.fn(async (settings) => settings);
+    const startVoice = vi.fn();
+    const listeners = new Set();
+    const conversationAdapter = {
+      getSnapshot: () => ({ phase: "idle", voiceState: "Idle", messages: [], voiceTurns: [], transcript: "", transcriptPartial: "", reply: "", error: "" }),
+      subscribe: (listener) => { listeners.add(listener); return () => listeners.delete(listener); },
+      startVoice,
+      closeSurface: vi.fn(),
+      dispose: vi.fn(),
+    };
+    const runtimeApi = {
+      isDesktop: false,
+      getBootstrap: async () => ({
+        settings: { voiceId: "voice-a", microphoneId: "mic-a", ttsModelId: "eleven_v3_conversational" },
+        chat: [], credentials: { deepseek: true, elevenlabs: true }, locked: false,
+      }),
+      saveSettings,
+      listVoices: async () => ({ ok: true, value: [] }),
+      onOpenSettings: () => () => {},
+      onLockedChanged: () => () => {},
+    };
+    const { container } = render(<App runtimeApi={runtimeApi} conversationAdapter={conversationAdapter} />);
+    await act(async () => Promise.resolve());
+
+    fireEvent.pointerEnter(container.querySelector(".voice-mode-picker"));
+    await act(async () => vi.advanceTimersByTimeAsync(360));
+    expect(screen.getByRole("menu", { name: "选择语音模式" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitemradio", { name: /实时对话/ })).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /表现力优先/ }));
+    await act(async () => Promise.resolve());
+
+    expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({ ttsModelId: "eleven_v3" }));
+    expect(startVoice).toHaveBeenCalledWith("mic-a", expect.objectContaining({ voiceId: "voice-a", ttsModelId: "eleven_v3" }));
+    expect(screen.queryByRole("menu", { name: "选择语音模式" })).not.toBeInTheDocument();
+  });
+
+  it("opens the voice mode menu from keyboard focus and closes it with Escape", async () => {
+    const { container } = render(<App />);
+    await act(async () => Promise.resolve());
+
+    fireEvent.focus(container.querySelector(".feature-companion"));
+    expect(screen.getByRole("menu", { name: "选择语音模式" })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("menu", { name: "选择语音模式" })).not.toBeInTheDocument();
+
+    fireEvent.focus(container.querySelector(".feature-companion"));
+    expect(screen.getByRole("menu", { name: "选择语音模式" })).toBeInTheDocument();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("menu", { name: "选择语音模式" })).not.toBeInTheDocument();
+  });
+
   it("loads the account voice catalog and lets the user select a voice", async () => {
     const saveSettings = vi.fn(async (settings) => settings);
     const listVoices = vi.fn(async () => ({ ok: true, value: [

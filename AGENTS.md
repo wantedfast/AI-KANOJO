@@ -1,5 +1,12 @@
 # Prototype Instructions
 
+## Highest-priority microphone mode picker override (v2.8 selected)
+
+- The idle microphone remains a one-click start using the last saved voice mode. Hovering it for roughly 350ms or focusing it from the keyboard opens a compact two-option menu above the capsule.
+- Present user-facing modes as “实时对话” (`eleven_v3_conversational`, interruptible and low-latency) and “表现力优先” (`eleven_v3`, stronger voice fidelity and non-interruptible). Keep raw model IDs out of the primary labels.
+- Selecting a mode persists it as the default and immediately starts voice conversation with that mode. The same default remains editable in Settings.
+- Show the selected mode with a checkmark and close the menu on selection, pointer exit, focus exit, outside transition, or Escape without changing the frozen capsule geometry.
+
 ## Highest-priority V3 Conversational interruption override (v2.7 selected)
 
 - Keep the existing ElevenAgents WebRTC path for `eleven_v3_conversational`; do not replace it with a local TTS playback loop.

@@ -5,6 +5,9 @@ import {
   ChatCircleDots,
   ArrowsOutSimple,
   GearSix,
+  Waveform,
+  Sparkle,
+  Check,
 } from "@phosphor-icons/react";
 import { STATE_META } from "./companion-state.js";
 import { EMPTY_CONVERSATION_SNAPSHOT, resolveConversationAdapter } from "./conversation-adapter.js";
@@ -13,6 +16,7 @@ import { CharacterAssetsManager } from "./character-assets-manager.jsx";
 import {
   ELEVEN_TTS_MODEL_OPTIONS,
   ELEVEN_V3_CONVERSATIONAL_MODEL_ID,
+  ELEVEN_V3_MODEL_ID,
 } from "../shared/model-contracts.js";
 import { CHARACTER_ASSET_STATES, DEFAULT_CHARACTER_ASSETS, visualStateAssetKey } from "../shared/character-assets.js";
 
@@ -49,13 +53,14 @@ const emptyCharacterAssets = () => ({
   states: Object.fromEntries(CHARACTER_ASSET_STATES.map((state) => [state, { src: null, fileName: null, customized: false }])),
 });
 
-function IconFeatureButton({ id, className = "", onClick, icon, label }) {
+function IconFeatureButton({ id, className = "", onClick, icon, label, ...buttonProps }) {
   return (
     <button
       type="button"
       className={`icon-feature-button feature-${id} ${className}`}
       onClick={onClick}
       aria-label={label}
+      {...buttonProps}
     >
       {icon}
       <span className="icon-tooltip" aria-hidden="true">{label}</span>
@@ -117,8 +122,13 @@ export function App({ runtimeApi = api, conversationAdapter } = {}) {
   const [minimized, setMinimized] = useState(false);
   const [saveNote, setSaveNote] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
+  const [voiceModeMenuOpen, setVoiceModeMenuOpen] = useState(false);
+  const [voiceModeSwitching, setVoiceModeSwitching] = useState(false);
   const [featureNotice, setFeatureNotice] = useState("");
   const featureNoticeTimer = useRef(null);
+  const voiceModeOpenTimer = useRef(null);
+  const voiceModeCloseTimer = useRef(null);
+  const voiceModePickerRef = useRef(null);
   const dragPointer = useRef(null);
 
   useEffect(() => {
@@ -131,13 +141,27 @@ export function App({ runtimeApi = api, conversationAdapter } = {}) {
 
   useEffect(() => {
     const handleEscape = (event) => {
-      if (event.key !== "Escape" || conversationSurface === "none") return;
+      if (event.key !== "Escape") return;
+      if (voiceModeMenuOpen) {
+        setVoiceModeMenuOpen(false);
+        return;
+      }
+      if (conversationSurface === "none") return;
       conversation.closeSurface?.(conversationSurface);
       setConversationSurface("none");
     };
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [conversation, conversationSurface]);
+  }, [conversation, conversationSurface, voiceModeMenuOpen]);
+
+  useEffect(() => {
+    if (!voiceModeMenuOpen) return undefined;
+    const closeOnOutsidePointer = (event) => {
+      if (!voiceModePickerRef.current?.contains(event.target)) setVoiceModeMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, [voiceModeMenuOpen]);
 
   const refreshMicrophones = async () => {
     if (!navigator.mediaDevices?.enumerateDevices) {
@@ -196,6 +220,8 @@ export function App({ runtimeApi = api, conversationAdapter } = {}) {
       unsubscribe?.();
       unsubscribeLocked?.();
       clearTimeout(featureNoticeTimer.current);
+      clearTimeout(voiceModeOpenTimer.current);
+      clearTimeout(voiceModeCloseTimer.current);
       navigator.mediaDevices?.removeEventListener?.("devicechange", handleDeviceChange);
     };
   }, [conversation]);
@@ -299,6 +325,7 @@ export function App({ runtimeApi = api, conversationAdapter } = {}) {
     setConversationSurface("none");
   };
   const handleChatRequest = () => {
+    setVoiceModeMenuOpen(false);
     if (conversationSurface === "chat") {
       closeConversationSurface();
       return;
@@ -307,19 +334,55 @@ export function App({ runtimeApi = api, conversationAdapter } = {}) {
     setPanel("compact");
     setConversationSurface("chat");
   };
-  const handleVoiceRequest = () => {
+  const startVoiceConversation = (preferences = settings) => {
     setPanel("compact");
-    if (conversationSurface !== "voice") {
-      conversation.closeSurface?.(conversationSurface);
-      setConversationSurface("voice");
-      conversation.startVoice?.(settings.microphoneId, {
-        voiceId: settings.voiceId,
-        ttsModelId: settings.ttsModelId,
-      });
-      return;
-    }
+    conversation.closeSurface?.(conversationSurface);
+    setConversationSurface("voice");
+    conversation.startVoice?.(preferences.microphoneId, {
+      voiceId: preferences.voiceId,
+      ttsModelId: preferences.ttsModelId,
+    });
+  };
+  const handleVoiceRequest = () => {
+    setVoiceModeMenuOpen(false);
+    if (conversationSurface !== "voice") return startVoiceConversation(settings);
     if (["paused", "error", "idle"].includes(conversationSnapshot.phase)) conversation.resumeVoice?.();
     else conversation.pauseVoice?.();
+  };
+  const openVoiceModeMenuSoon = () => {
+    clearTimeout(voiceModeCloseTimer.current);
+    clearTimeout(voiceModeOpenTimer.current);
+    voiceModeOpenTimer.current = setTimeout(() => setVoiceModeMenuOpen(true), 350);
+  };
+  const openVoiceModeMenuNow = () => {
+    clearTimeout(voiceModeCloseTimer.current);
+    clearTimeout(voiceModeOpenTimer.current);
+    setVoiceModeMenuOpen(true);
+  };
+  const closeVoiceModeMenuSoon = () => {
+    clearTimeout(voiceModeOpenTimer.current);
+    clearTimeout(voiceModeCloseTimer.current);
+    voiceModeCloseTimer.current = setTimeout(() => setVoiceModeMenuOpen(false), 180);
+  };
+  const selectVoiceMode = async (ttsModelId) => {
+    if (voiceModeSwitching) return;
+    const previousSettings = settings;
+    const nextSettings = { ...settings, ttsModelId };
+    setVoiceModeMenuOpen(false);
+    setVoiceModeSwitching(true);
+    setSettings(nextSettings);
+    try {
+      const saved = await api.saveSettings(nextSettings);
+      const appliedSettings = { ...nextSettings, ...saved, demoMode: nextSettings.demoMode };
+      settingsBaselineRef.current = appliedSettings;
+      setSettings(appliedSettings);
+      startVoiceConversation(appliedSettings);
+    } catch (error) {
+      setSettings(previousSettings);
+      showFeatureNotice(error.message || "语音模式切换失败");
+    } finally {
+      setVoiceModeSwitching(false);
+    }
   };
   const endVoiceConversation = () => {
     conversation.endVoice?.();
@@ -415,13 +478,53 @@ export function App({ runtimeApi = api, conversationAdapter } = {}) {
               />
             ) : <>
             <div className="icon-feature-group" aria-label="快捷功能">
-              <IconFeatureButton
-                id="companion"
-                className={`state-${visualState}`}
-                onClick={handleVoiceRequest}
-                icon={<Microphone weight="light" />}
-                label={conversationSurface === "voice" ? `${meta.label}，点击暂停或继续` : "开始简短语音对话"}
-              />
+              <div
+                ref={voiceModePickerRef}
+                className={`voice-mode-picker ${voiceModeMenuOpen ? "is-open" : ""}`}
+                data-no-window-drag
+                onPointerEnter={openVoiceModeMenuSoon}
+                onPointerLeave={closeVoiceModeMenuSoon}
+                onFocusCapture={openVoiceModeMenuNow}
+                onBlurCapture={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget)) closeVoiceModeMenuSoon();
+                }}
+              >
+                <IconFeatureButton
+                  id="companion"
+                  className={`state-${visualState}`}
+                  onClick={handleVoiceRequest}
+                  icon={<Microphone weight="light" />}
+                  label="开始语音对话"
+                  aria-haspopup="menu"
+                  aria-expanded={voiceModeMenuOpen}
+                />
+                {voiceModeMenuOpen && (
+                  <div className="voice-mode-menu" role="menu" aria-label="选择语音模式">
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={settings.ttsModelId === ELEVEN_V3_CONVERSATIONAL_MODEL_ID}
+                      disabled={voiceModeSwitching}
+                      onClick={() => selectVoiceMode(ELEVEN_V3_CONVERSATIONAL_MODEL_ID)}
+                    >
+                      <Waveform weight="light" aria-hidden="true" />
+                      <span><strong>实时对话</strong><small>可打断 · 低延迟</small></span>
+                      {settings.ttsModelId === ELEVEN_V3_CONVERSATIONAL_MODEL_ID && <Check weight="bold" aria-hidden="true" />}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={settings.ttsModelId === ELEVEN_V3_MODEL_ID}
+                      disabled={voiceModeSwitching}
+                      onClick={() => selectVoiceMode(ELEVEN_V3_MODEL_ID)}
+                    >
+                      <Sparkle weight="light" aria-hidden="true" />
+                      <span><strong>表现力优先</strong><small>声线更完整 · 不可打断</small></span>
+                      {settings.ttsModelId === ELEVEN_V3_MODEL_ID && <Check weight="bold" aria-hidden="true" />}
+                    </button>
+                  </div>
+                )}
+              </div>
               <IconFeatureButton
                 id="sing"
                 onClick={handleSingRequest}
