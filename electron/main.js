@@ -401,6 +401,19 @@ async function runSmokeCheck(reportPath) {
       return image ? { complete: image.complete, naturalWidth: image.naturalWidth, src: image.src, rect: rect && { x: rect.x, y: rect.y, width: rect.width, height: rect.height } } : null;
     })()
   `, true);
+  renderer.voiceBubble = await window.webContents.executeJavaScript(`
+    (() => {
+      const bubble = document.querySelector('.voice-popover');
+      const rect = bubble?.getBoundingClientRect();
+      const pointer = bubble ? getComputedStyle(bubble, '::after') : null;
+      const pointerTop = Number.parseFloat(pointer?.top || '0');
+      const pointerSize = Number.parseFloat(pointer?.width || '0');
+      return rect ? {
+        rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+        pointerCenterY: rect.y + pointerTop + (pointerSize / 2),
+      } : null;
+    })()
+  `, true);
   renderer.voiceRail = await window.webContents.executeJavaScript(`
     (() => {
       const slot = document.querySelector('.runtime-avatar-slot');

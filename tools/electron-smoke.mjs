@@ -120,6 +120,11 @@ if (
   throw new Error(`Renderer smoke assertions failed: ${JSON.stringify(report.renderer)}`);
 }
 
+const portraitFaceCenterY = report.renderer.portrait.rect.y + (report.renderer.portrait.rect.height * 0.186);
+if (!report.renderer.voiceBubble || Math.abs(report.renderer.voiceBubble.pointerCenterY - portraitFaceCenterY) > 28) {
+  throw new Error(`Voice bubble pointer is not aligned with the portrait face: ${JSON.stringify({ portraitFaceCenterY, voiceBubble: report.renderer.voiceBubble })}`);
+}
+
 const restoreCode = await new Promise((resolve, reject) => {
   const child = spawn(executable, [root], {
     cwd: root,
