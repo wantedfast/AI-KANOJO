@@ -1,11 +1,5 @@
 # Prototype Instructions
 
-## Highest-priority standalone V3 turn confirmation (v3.1 selected)
-
-- Standard `eleven_v3` remains non-interruptible: mute both the ElevenAgent microphone and the independent caption track for the full local TTS playback, and ignore interruption callbacks in this mode.
-- When the caption sidecar is available, an ElevenAgent user transcript after standalone V3 playback must not create a turn or enter `thinking` until the local Scribe stream confirms lexical speech. Preserve immediate fallback to the Agent transcript only when the caption sidecar is unavailable.
-- This confirmation gate does not apply to `eleven_v3_conversational`; its existing real-time barge-in behavior remains unchanged.
-
 ## Highest-priority realtime interruption echo guard (v3.0 selected)
 
 - Keep V3 Conversational interruption enabled, but enable ElevenAgent VAD background voice detection and the independent Scribe caption sidecar's background-audio filter. Speaker playback, nearby speech, and ambient noise must not create a new user turn after the Agent finishes speaking.
