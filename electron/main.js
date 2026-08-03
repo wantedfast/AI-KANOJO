@@ -401,25 +401,26 @@ async function runSmokeCheck(reportPath) {
       return image ? { complete: image.complete, naturalWidth: image.naturalWidth, src: image.src, rect: rect && { x: rect.x, y: rect.y, width: rect.width, height: rect.height } } : null;
     })()
   `, true);
-  renderer.runtimeAvatar = await window.webContents.executeJavaScript(`
+  renderer.voiceRail = await window.webContents.executeJavaScript(`
     (() => {
       const slot = document.querySelector('.runtime-avatar-slot');
-      const avatar = slot?.querySelector('img');
       const features = document.querySelector('.icon-feature-group');
+      const sessionRail = document.querySelector('.voice-session-rail');
       const codex = document.querySelector('.codex-status');
       const rect = (element) => {
         const value = element?.getBoundingClientRect();
         return value ? { x: value.x, y: value.y, width: value.width, height: value.height, right: value.right, bottom: value.bottom } : null;
       };
-      const avatarRect = rect(avatar);
+      const sessionRailRect = rect(sessionRail);
       const codexRect = rect(codex);
       return {
-        slotPresent: Boolean(slot),
-        orderCorrect: Boolean(features && slot && codex && (features.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING) && (slot.compareDocumentPosition(codex) & Node.DOCUMENT_POSITION_FOLLOWING)),
-        avatarRect,
+        present: Boolean(sessionRail),
+        featureControlsHidden: !features,
+        runtimeAvatarHidden: !slot,
+        orderCorrect: Boolean(sessionRail && codex && (sessionRail.compareDocumentPosition(codex) & Node.DOCUMENT_POSITION_FOLLOWING)),
+        sessionRailRect,
         codexRect,
-        longEdge: avatarRect ? Math.max(avatarRect.width, avatarRect.height) : null,
-        overlapsCodex: Boolean(avatarRect && codexRect && avatarRect.x < codexRect.right && avatarRect.right > codexRect.x && avatarRect.y < codexRect.bottom && avatarRect.bottom > codexRect.y),
+        overlapsCodex: Boolean(sessionRailRect && codexRect && sessionRailRect.x < codexRect.right && sessionRailRect.right > codexRect.x && sessionRailRect.y < codexRect.bottom && sessionRailRect.bottom > codexRect.y),
       };
     })()
   `, true);
@@ -435,12 +436,12 @@ async function runSmokeCheck(reportPath) {
   renderer.afterExternalStop = await window.webContents.executeJavaScript('document.querySelector(".state-listening") !== null', true);
   renderer.resleepAvatar = await window.webContents.executeJavaScript(`
     (async () => {
-      document.querySelector('.feature-companion')?.click();
+      document.querySelector('[aria-label="结束语音对话"]')?.click();
       await new Promise((resolve) => setTimeout(resolve, 80));
       const image = document.querySelector('.runtime-avatar-slot img');
       const rect = image?.getBoundingClientRect();
       return {
-        idle: document.querySelector('.state-idle.is-awake') !== null,
+        idle: document.querySelector('.state-idle.is-asleep') !== null,
         portraitHidden: document.querySelector('.portrait-button') === null,
         src: image?.getAttribute('src') ?? null,
         longEdge: rect ? Math.max(rect.width, rect.height) : null,
@@ -533,15 +534,20 @@ async function runSmokeCheck(reportPath) {
   renderer.settingsLayout = await window.webContents.executeJavaScript(`
     (async () => {
       await new Promise((resolve) => setTimeout(resolve, 250));
-      const panel = document.querySelector('[aria-label="设置与诊断"]');
-      const selects = Array.from(panel?.querySelectorAll('.settings-grid select') || []).map((select) => {
+       const panel = document.querySelector('[aria-label="设置与偏好"]');
+       const selects = Array.from(panel?.querySelectorAll('.settings-grid select') || []).map((select) => {
         const rect = select.getBoundingClientRect();
         return { top: rect.top, height: rect.height };
       });
-      const assetManager = panel?.querySelector('.character-assets-manager');
-      return {
-        visible: Boolean(panel),
-        fieldCount: selects.length,
+       const characterTab = panel?.querySelector('[role="tab"][aria-selected="false"]');
+       characterTab?.click();
+       await new Promise((resolve) => setTimeout(resolve, 50));
+       const assetManager = panel?.querySelector('.character-assets-manager');
+       return {
+         visible: Boolean(panel),
+         fieldCount: selects.length,
+         voiceTabVisible: Boolean(panel?.querySelector('[role="tab"][aria-selected="true"]')),
+         characterTabVisible: Boolean(characterTab),
         assetManagerVisible: Boolean(assetManager),
         assetImportActionCount: assetManager?.querySelectorAll('button[aria-label^="替换"]').length || 0,
         aligned: selects.length === 3

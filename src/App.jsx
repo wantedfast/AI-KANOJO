@@ -4,10 +4,11 @@ import {
   MusicNotes,
   ChatCircleDots,
   ArrowsOutSimple,
+  GearSix,
 } from "@phosphor-icons/react";
 import { STATE_META } from "./companion-state.js";
 import { EMPTY_CONVERSATION_SNAPSHOT, resolveConversationAdapter } from "./conversation-adapter.js";
-import { TextChatPanel, VoiceConversationPopover } from "./conversation-surfaces.jsx";
+import { TextChatPanel, VoiceConversationPopover, VoiceSessionRail } from "./conversation-surfaces.jsx";
 import { CharacterAssetsManager } from "./character-assets-manager.jsx";
 import {
   ELEVEN_TTS_MODEL_OPTIONS,
@@ -96,12 +97,14 @@ export function App({ runtimeApi = api, conversationAdapter } = {}) {
   const [conversationSnapshot, setConversationSnapshot] = useState(() => conversation.getSnapshot?.() ?? EMPTY_CONVERSATION_SNAPSHOT);
   const [conversationSurface, setConversationSurface] = useState("none");
   const [panel, setPanel] = useState("compact");
+  const [settingsSection, setSettingsSection] = useState("voice");
   const [settings, setSettings] = useState({
     demoMode: !api.isDesktop,
     voiceId: "",
     microphoneId: "",
     ttsModelId: ELEVEN_V3_CONVERSATIONAL_MODEL_ID,
   });
+  const settingsBaselineRef = useRef(settings);
   const [credentials, setCredentials] = useState({ deepseek: false, elevenlabs: false });
   const [microphones, setMicrophones] = useState([]);
   const [voices, setVoices] = useState([]);
@@ -165,7 +168,11 @@ export function App({ runtimeApi = api, conversationAdapter } = {}) {
     api.getBootstrap().then((data) => {
       if (!mounted) return;
       setFrontendPreviewMode(!api.isDesktop || Boolean(data.smokeMode));
-      setSettings((current) => ({ ...current, ...data.settings, demoMode: !api.isDesktop || Boolean(data.smokeMode) }));
+      setSettings((current) => {
+        const nextSettings = { ...current, ...data.settings, demoMode: !api.isDesktop || Boolean(data.smokeMode) };
+        settingsBaselineRef.current = nextSettings;
+        return nextSettings;
+      });
       setCredentials(data.credentials);
       conversation.setBackendStatus?.(data.conversationBackend);
       conversation.hydrate?.(data.chat);
@@ -175,7 +182,11 @@ export function App({ runtimeApi = api, conversationAdapter } = {}) {
       configured: false,
       issues: [{ message: error.message || "应用初始化失败" }],
     }));
-    const unsubscribe = api.onOpenSettings?.(() => setPanel("settings"));
+    const unsubscribe = api.onOpenSettings?.(() => {
+      setSettings((current) => { settingsBaselineRef.current = current; return current; });
+      setSettingsSection("voice");
+      setPanel("settings");
+    });
     const unsubscribeLocked = api.onLockedChanged?.(setLocked);
     const handleDeviceChange = () => refreshMicrophones().catch(() => setMicrophones([]));
     navigator.mediaDevices?.addEventListener?.("devicechange", handleDeviceChange);
@@ -210,10 +221,12 @@ export function App({ runtimeApi = api, conversationAdapter } = {}) {
     setSaveNote("正在校验并应用音色…");
     try {
       const next = await api.saveSettings(settings);
-      setSettings((current) => ({ ...current, ...next, demoMode: !api.isDesktop }));
+      const savedSettings = { ...settings, ...next, demoMode: !api.isDesktop };
+      settingsBaselineRef.current = savedSettings;
+      setSettings(savedSettings);
       const ready = !api.isDesktop || (credentials.deepseek && credentials.elevenlabs && next.voiceId);
       setSaveNote(ready ? "音色已应用，可以开始对话" : "仍需填写缺失的配置");
-      if (ready) setTimeout(() => setPanel("compact"), 700);
+      if (ready) setPanel("compact");
     } catch (error) {
       setSaveNote(error.message || "保存失败");
     } finally {
@@ -314,9 +327,18 @@ export function App({ runtimeApi = api, conversationAdapter } = {}) {
   };
   const openSettingsPanel = (event) => {
     event?.preventDefault?.();
-    if (conversationSurface !== "none") conversation.closeSurface?.(conversationSurface);
+    if (conversationSurface === "voice") conversation.endVoice?.();
+    else if (conversationSurface !== "none") conversation.closeSurface?.(conversationSurface);
     setConversationSurface("none");
+    settingsBaselineRef.current = settings;
+    setSettingsSection("voice");
     setPanel("settings");
+  };
+  const cancelSettings = () => {
+    setSettings(settingsBaselineRef.current);
+    setSaveNote("");
+    setSettingsSection("voice");
+    setPanel("compact");
   };
 
   const conversationVisualPhase = ["connecting", "transcribing"].includes(conversationSnapshot.phase)
@@ -384,6 +406,14 @@ export function App({ runtimeApi = api, conversationAdapter } = {}) {
             </div>
           ) : (<>
           <div className="rail-mainline">
+            {conversationSurface === "voice" ? (
+              <VoiceSessionRail
+                snapshot={conversationSnapshot}
+                onPause={() => conversation.pauseVoice?.()}
+                onResume={() => conversation.resumeVoice?.()}
+                onEnd={endVoiceConversation}
+              />
+            ) : <>
             <div className="icon-feature-group" aria-label="快捷功能">
               <IconFeatureButton
                 id="companion"
@@ -421,6 +451,7 @@ export function App({ runtimeApi = api, conversationAdapter } = {}) {
                 </button>
               </div>
             )}
+            </>}
 
             <span className="rail-main-spacer" />
             <CodexStatus working={codexWorking} />
@@ -431,6 +462,9 @@ export function App({ runtimeApi = api, conversationAdapter } = {}) {
               </button>
               <button type="button" className="traffic-light traffic-light-minimize" data-no-window-drag data-tooltip="缩小悬浮窗" title="缩小悬浮窗" onClick={() => { closeConversationSurface(); setPanel("compact"); setMinimized(true); }} aria-label="缩小悬浮窗">
                 <span aria-hidden="true" />
+              </button>
+              <button type="button" className="traffic-light traffic-light-settings" data-no-window-drag data-tooltip="打开设置" title="打开设置" onClick={openSettingsPanel} aria-label="打开设置">
+                <span aria-hidden="true"><GearSix weight="bold" /></span>
               </button>
             </div>
           </div>
@@ -450,22 +484,23 @@ export function App({ runtimeApi = api, conversationAdapter } = {}) {
         {!minimized && panel !== "settings" && conversationSurface === "voice" && (
           <VoiceConversationPopover
             snapshot={conversationSnapshot}
-            portraitSrc={portraitSrc}
-            onPause={() => conversation.pauseVoice?.()}
-            onResume={() => conversation.resumeVoice?.()}
-            onEnd={endVoiceConversation}
             onRetry={(turnId) => conversation.retryVoiceTurn?.(turnId)}
           />
         )}
 
         {panel === "settings" && (
-          <section className="glass-panel settings-panel" aria-label="设置与诊断">
+          <section className="glass-panel settings-panel" aria-label="设置与偏好">
             <header className="panel-header">
-              <div><span className="eyebrow">VOICE & CHARACTER</span><h1>声音与角色</h1></div>
-              <button type="button" className="text-button" onClick={() => setPanel("compact")}>完成</button>
+              <div><span className="eyebrow">PREFERENCES</span><h1>设置</h1></div>
+              <button type="button" className="text-button" onClick={cancelSettings} aria-label="取消设置">取消</button>
             </header>
 
-            <div className="settings-grid">
+            <div className="settings-segmented-control" role="tablist" aria-label="设置分类">
+              <button type="button" role="tab" aria-selected={settingsSection === "voice"} onClick={() => setSettingsSection("voice")}>声音</button>
+              <button type="button" role="tab" aria-selected={settingsSection === "character"} onClick={() => setSettingsSection("character")}>角色资产</button>
+            </div>
+
+            {settingsSection === "voice" && <div className="settings-grid" role="tabpanel" aria-label="声音设置">
               <div className="voice-id-setting">
                 <label><span>ElevenLabs 音色</span><select aria-label="ElevenLabs 音色" value={settings.voiceId} onChange={(event) => setSettings({ ...settings, voiceId: event.target.value })} disabled={voiceCatalogState === "loading"}>
                   {!settings.voiceId && <option value="">{voiceCatalogState === "loading" ? "正在加载音色…" : "请选择音色"}</option>}
@@ -474,19 +509,19 @@ export function App({ runtimeApi = api, conversationAdapter } = {}) {
                 </select></label>
                 <div className="voice-setting-meta"><small className={`settings-hint ${voiceCatalogState === "error" ? "is-error" : ""}`}>{voiceCatalogState === "error" ? voiceCatalogError : "选择后将同步到语音 Agent，下次语音对话生效"}</small><button type="button" className="voice-refresh-button" onClick={refreshVoices} disabled={voiceCatalogState === "loading"}>{voiceCatalogState === "loading" ? "加载中" : "刷新音色"}</button></div>
               </div>
-              <label><span>语音模型</span><select aria-label="语音模型" value={settings.ttsModelId} onChange={(event) => setSettings({ ...settings, ttsModelId: event.target.value })}>
+              <label><span>语音模型</span><select aria-label="语音模型" title={ELEVEN_TTS_MODEL_OPTIONS.find((model) => model.id === settings.ttsModelId)?.label || "语音模型"} value={settings.ttsModelId} onChange={(event) => setSettings({ ...settings, ttsModelId: event.target.value })}>
                 {ELEVEN_TTS_MODEL_OPTIONS.map((model) => <option value={model.id} key={model.id}>{model.label}{model.mode === "realtime" ? " · 实时优先" : " · 表现力优先"}</option>)}
               </select><small className="settings-hint">Conversational 响应更快；标准 V3 使用独立合成，音质优先但延迟更高。</small></label>
               <label><span>麦克风</span><select value={settings.microphoneId} onChange={(event) => setSettings({ ...settings, microphoneId: event.target.value })}><option value="">系统默认麦克风</option>{microphones.map((device, index) => <option value={device.deviceId} key={device.deviceId}>{device.label || `麦克风 ${index + 1}`}</option>)}</select></label>
-            </div>
-            <CharacterAssetsManager
+            </div>}
+            {settingsSection === "character" && <div role="tabpanel" aria-label="角色资产设置"><CharacterAssetsManager
               assets={characterAssets}
               busyKey={assetBusyKey}
               note={assetNote}
               onImport={importCharacterAsset}
               onReset={resetCharacterAsset}
-            />
-            <button type="button" className="primary-button" onClick={savePreferences} disabled={savingSettings}>{saveNote || "应用并保存设置"}</button>
+            /></div>}
+            <button type="button" className="primary-button" onClick={savePreferences} disabled={savingSettings}>{saveNote || "保存设置"}</button>
           </section>
         )}
       </section>

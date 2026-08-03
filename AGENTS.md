@@ -1,5 +1,12 @@
 # Prototype Instructions
 
+## Highest-priority active conversation UI override (v2.6 selected)
+
+- The large 2D conversation portrait is the sole speaking character during voice mode. Hide the three default feature icons and the runtime 8-bit avatar while voice is active; replace their combined rail space with one dynamic voice-session control showing the current phase, pause/resume, and end. Keep the existing Codex block, traffic-light controls, and 520×80 capsule geometry.
+- The voice transcript/reply surface is a compact glass speech bubble positioned to the right of and pointing toward the 2D portrait. It contains only the current user caption, current assistant reply, error, and retry state; do not duplicate avatar, pause, or end controls inside it.
+- Text chat uses an approximately 410px panel with readable 13–14px messages and at least 10px supporting text while preserving history and composer behavior.
+- Settings has a visible gray gear below the red/yellow window controls while retaining right-click access. Split settings into Voice and Character Assets tabs; use one Save action and a separate Cancel action that discards unsaved preference edits.
+
 ## Highest-priority minimal-routing-prompt override (v2.5 selected)
 
 - DeepSeek receives only sanitized user/assistant conversation history and no system, developer, persona, style, or response-length prompt.

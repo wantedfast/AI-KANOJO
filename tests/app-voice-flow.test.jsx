@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App.jsx";
 import { EMPTY_CONVERSATION_SNAPSHOT } from "../src/conversation-adapter.js";
@@ -31,6 +31,23 @@ function createFrontendAdapter(initial = {}) {
 afterEach(() => cleanup());
 
 describe("frontend conversation surfaces", () => {
+  it("replaces the primary controls and 8-bit avatar with a voice session rail", async () => {
+    const adapter = createFrontendAdapter();
+    const { container } = render(<App conversationAdapter={adapter} />);
+    await act(async () => Promise.resolve());
+
+    fireEvent.click(container.querySelector(".feature-companion"));
+
+    expect(screen.getByLabelText("语音会话控制")).toHaveTextContent("正在听");
+    expect(container.querySelector(".icon-feature-group")).not.toBeInTheDocument();
+    expect(container.querySelector(".runtime-avatar-slot")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Codex Standby")).toBeInTheDocument();
+    expect(container.querySelector(".conversation-portrait")).toBeInTheDocument();
+    const bubble = screen.getByLabelText("简短语音对话");
+    expect(within(bubble).queryByRole("button", { name: "结束语音对话" })).not.toBeInTheDocument();
+    expect(bubble.querySelector(".voice-reply-avatar")).not.toBeInTheDocument();
+  });
+
   it("opens a compact voice popover and reflects injected voice phases", async () => {
     const adapter = createFrontendAdapter();
     const { container } = render(<App conversationAdapter={adapter} />);
@@ -42,17 +59,16 @@ describe("frontend conversation surfaces", () => {
       voiceId: "",
       ttsModelId: "eleven_v3_conversational",
     });
-    expect(screen.getByText("语音对话")).toBeInTheDocument();
     expect(container.querySelectorAll(".portrait-button")).toHaveLength(1);
-    expect(screen.getByLabelText("简短语音对话")).toHaveTextContent("正在听");
+    expect(screen.getByLabelText("语音会话控制")).toHaveTextContent("正在听");
 
     act(() => adapter.publish({ phase: "thinking", transcript: "今天过得怎么样？" }));
-    expect(screen.getByLabelText("简短语音对话")).toHaveTextContent("正在思考");
+    expect(screen.getByLabelText("语音会话控制")).toHaveTextContent("正在思考");
     expect(screen.getByLabelText("简短语音对话")).toHaveTextContent("今天过得怎么样？");
     expect(container.querySelector(".desktop-stage")).toHaveClass("state-thinking");
 
     act(() => adapter.publish({ phase: "speaking", reply: "见到你之后，心情就更好啦。" }));
-    expect(screen.getByLabelText("简短语音对话")).toHaveTextContent("正在回复");
+    expect(screen.getByLabelText("语音会话控制")).toHaveTextContent("正在回复");
     expect(screen.getByLabelText("简短语音对话")).toHaveTextContent("见到你之后，心情就更好啦。");
     expect(container.querySelector(".desktop-stage")).toHaveClass("state-speaking");
   });
@@ -65,7 +81,7 @@ describe("frontend conversation surfaces", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "暂停语音对话" }));
     expect(adapter.pauseVoice).toHaveBeenCalledOnce();
-    expect(screen.getByLabelText("简短语音对话")).toHaveTextContent("已暂停");
+    expect(screen.getByLabelText("语音会话控制")).toHaveTextContent("已暂停");
     fireEvent.click(screen.getByRole("button", { name: "继续语音对话" }));
     expect(adapter.resumeVoice).toHaveBeenCalledOnce();
 
@@ -73,6 +89,22 @@ describe("frontend conversation surfaces", () => {
     expect(adapter.endVoice).toHaveBeenCalledOnce();
     expect(screen.queryByLabelText("简短语音对话")).not.toBeInTheDocument();
     expect(container.querySelector(".desktop-stage")).toHaveClass("state-idle", "is-asleep");
+  });
+
+  it("ends the active voice session before opening settings", async () => {
+    const adapter = createFrontendAdapter();
+    const { container } = render(<App conversationAdapter={adapter} />);
+    await act(async () => Promise.resolve());
+    fireEvent.click(container.querySelector(".feature-companion"));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "打开设置" }));
+      await Promise.resolve();
+    });
+
+    expect(adapter.endVoice).toHaveBeenCalledOnce();
+    expect(screen.getByLabelText("设置与偏好")).toBeInTheDocument();
+    expect(screen.queryByLabelText("简短语音对话")).not.toBeInTheDocument();
   });
 
   it("shows separate partial and final captions and exposes retry for a failed turn", async () => {
@@ -133,8 +165,9 @@ describe("frontend conversation surfaces", () => {
     fireEvent.click(container.querySelector(".feature-companion"));
     expect(screen.getByLabelText("简短语音对话")).toBeInTheDocument();
     expect(container.querySelectorAll(".portrait-button")).toHaveLength(1);
-    fireEvent.click(container.querySelector(".feature-chat"));
+    fireEvent.click(screen.getByRole("button", { name: "结束语音对话" }));
     expect(adapter.endVoice).toHaveBeenCalledOnce();
+    fireEvent.click(container.querySelector(".feature-chat"));
     expect(screen.getByLabelText("与罗照月文字聊天")).toBeInTheDocument();
     expect(screen.queryByLabelText("简短语音对话")).not.toBeInTheDocument();
     expect(container.querySelectorAll(".portrait-button")).toHaveLength(1);

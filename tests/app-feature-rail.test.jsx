@@ -42,11 +42,11 @@ describe("flat spectrum feature rail", () => {
     expect(modelSelect).toHaveValue("eleven_v3_conversational");
     expect(screen.getByRole("option", { name: /Eleven v3 · 表现力优先/ })).toBeInTheDocument();
     fireEvent.change(modelSelect, { target: { value: "eleven_v3" } });
-    fireEvent.click(screen.getByRole("button", { name: "应用并保存设置" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存设置" }));
     await act(async () => Promise.resolve());
 
     expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({ voiceId: "YyODrkDd1qMUj9jupJch", ttsModelId: "eleven_v3" }));
-    expect(screen.getByText("选择后将同步到语音 Agent，下次语音对话生效")).toBeInTheDocument();
+    expect(screen.queryByLabelText("设置与偏好")).not.toBeInTheDocument();
     expect(screen.queryByText("固定模型")).not.toBeInTheDocument();
     expect(screen.queryByText("DeepSeek API Key")).not.toBeInTheDocument();
     expect(screen.queryByText("ElevenLabs API Key")).not.toBeInTheDocument();
@@ -66,7 +66,7 @@ describe("flat spectrum feature rail", () => {
     expect(screen.getByLabelText("Codex Standby")).toHaveTextContent("CodexReady");
 
     const controls = screen.getByLabelText("窗口控制");
-    expect(controls.querySelectorAll("button")).toHaveLength(2);
+    expect(controls.querySelectorAll("button")).toHaveLength(3);
     expect(screen.getByRole("button", { name: "关闭程序" })).toHaveClass("traffic-light-close");
     expect(screen.getByRole("button", { name: "关闭程序" })).toHaveAttribute("data-tooltip", "关闭程序");
     expect(screen.getByRole("button", { name: "关闭程序" })).toHaveAttribute("title", "关闭程序");
@@ -75,6 +75,12 @@ describe("flat spectrum feature rail", () => {
     expect(screen.getByRole("button", { name: "缩小悬浮窗" })).toHaveAttribute("data-tooltip", "缩小悬浮窗");
     expect(screen.getByRole("button", { name: "缩小悬浮窗" })).toHaveAttribute("title", "缩小悬浮窗");
     expect(screen.getByRole("button", { name: "缩小悬浮窗" })).toHaveAttribute("data-no-window-drag");
+    expect(screen.getByRole("button", { name: "打开设置" })).toHaveClass("traffic-light-settings");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "打开设置" }));
+      await Promise.resolve();
+    });
+    expect(screen.getByLabelText("设置与偏好")).toBeInTheDocument();
     expect(container.querySelector(".utility-menu-trigger")).not.toBeInTheDocument();
   });
 
@@ -90,6 +96,55 @@ describe("flat spectrum feature rail", () => {
     expect(container.querySelector(".desktop-stage")).toHaveClass("state-completed", "is-awake");
   });
 
+  it("separates voice preferences from character assets in settings", async () => {
+    render(<App />);
+    await act(async () => Promise.resolve());
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "打开设置" }));
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("tab", { name: "声音" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("combobox", { name: "语音模型" })).toBeInTheDocument();
+    expect(screen.queryByText("角色资产")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "角色资产" }));
+    expect(screen.getByRole("tab", { name: "角色资产" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("combobox", { name: "语音模型" })).not.toBeInTheDocument();
+    expect(screen.getByText("会话立绘")).toBeInTheDocument();
+  });
+
+  it("discards unsaved settings when the user cancels", async () => {
+    const saveSettings = vi.fn();
+    const runtimeApi = {
+      isDesktop: false,
+      getBootstrap: async () => ({
+        settings: { voiceId: "voice-a", microphoneId: "", ttsModelId: "eleven_v3_conversational" },
+        chat: [], credentials: { deepseek: true, elevenlabs: true }, locked: false,
+      }),
+      saveSettings,
+      listVoices: async () => ({ ok: true, value: [
+        { voiceId: "voice-a", name: "Voice A", category: "cloned", language: "zh" },
+        { voiceId: "voice-b", name: "Voice B", category: "cloned", language: "ja" },
+      ] }),
+      onOpenSettings: () => () => {},
+      onLockedChanged: () => () => {},
+    };
+    render(<App runtimeApi={runtimeApi} />);
+    await act(async () => Promise.resolve());
+
+    fireEvent.click(screen.getByRole("button", { name: "打开设置" }));
+    const voiceSelect = await screen.findByRole("combobox", { name: "ElevenLabs 音色" });
+    expect(voiceSelect).toHaveValue("voice-a");
+    fireEvent.change(voiceSelect, { target: { value: "voice-b" } });
+    fireEvent.click(screen.getByRole("button", { name: "取消设置" }));
+    expect(screen.queryByLabelText("设置与偏好")).not.toBeInTheDocument();
+    expect(saveSettings).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "打开设置" }));
+    expect(await screen.findByRole("combobox", { name: "ElevenLabs 音色" })).toHaveValue("voice-a");
+  });
+
   it("collapses to the small draggable rail and restores", async () => {
     const { container } = render(<App />);
     await act(async () => Promise.resolve());
@@ -100,25 +155,22 @@ describe("flat spectrum feature rail", () => {
     expect(screen.getByRole("button", { name: "缩小悬浮窗" })).toBeInTheDocument();
   });
 
-  it("moves the active 8-bit avatar between the feature icons and Codex", async () => {
+  it("places the voice session rail before Codex and hides the 8-bit avatar", async () => {
     const { container } = render(<App />);
     await act(async () => Promise.resolve());
 
     fireEvent.click(container.querySelector(".feature-companion"));
     const mainline = container.querySelector(".rail-mainline");
-    const features = mainline.querySelector(".icon-feature-group");
-    const slot = mainline.querySelector(".runtime-avatar-slot");
+    const voiceRail = mainline.querySelector(".voice-session-rail");
     const codex = mainline.querySelector(".codex-status");
 
     expect(container.querySelector(".desktop-stage")).toHaveClass("state-listening", "is-awake");
-    expect(slot).toBeInTheDocument();
-    expect(slot.querySelector(".runtime-avatar-button img")).toHaveAttribute("src", expect.stringContaining("listening.png"));
-    expect(slot.querySelector(".runtime-avatar-button")).toHaveStyle({ "--seat-bottom": "-72px" });
-    expect(features.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(slot.compareDocumentPosition(codex) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(voiceRail).toBeInTheDocument();
+    expect(mainline.querySelector(".runtime-avatar-slot")).not.toBeInTheDocument();
+    expect(voiceRail.compareDocumentPosition(codex) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("keeps the reserved avatar slot while conversation state advances", async () => {
+  it("advances the dynamic voice rail while Codex remains available", async () => {
     vi.useFakeTimers();
     const { container } = render(<App />);
     await act(async () => Promise.resolve());
@@ -126,7 +178,8 @@ describe("flat spectrum feature rail", () => {
 
     await act(async () => vi.advanceTimersByTimeAsync(1600));
     expect(container.querySelector(".desktop-stage")).toHaveClass("state-thinking");
-    expect(container.querySelector(".runtime-avatar-slot img")).toHaveAttribute("src", expect.stringContaining("thinking.png"));
+    expect(screen.getByLabelText("语音会话控制")).toHaveTextContent("正在思考");
+    expect(container.querySelector(".runtime-avatar-slot")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Codex Working")).toHaveTextContent("Working");
   });
 
@@ -138,9 +191,9 @@ describe("flat spectrum feature rail", () => {
     fireEvent.click(container.querySelector(".feature-companion"));
     expect(container.querySelectorAll(".portrait-button")).toHaveLength(1);
     expect(container.querySelector(".portrait-button img")).toHaveAttribute("src", "./avatar/outfits/front/02-modern-jk-conversation.png");
-    fireEvent.click(container.querySelector(".feature-companion"));
+    fireEvent.click(screen.getByRole("button", { name: "暂停语音对话" }));
     expect(container.querySelector(".portrait-button")).not.toBeInTheDocument();
-    fireEvent.click(container.querySelector(".feature-companion"));
+    fireEvent.click(screen.getByRole("button", { name: "继续语音对话" }));
     expect(container.querySelectorAll(".portrait-button")).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "结束语音对话" }));
     expect(container.querySelector(".portrait-button")).not.toBeInTheDocument();
@@ -219,6 +272,7 @@ describe("flat spectrum feature rail", () => {
     const { container } = render(<App runtimeApi={runtimeApi} />);
     await waitFor(() => expect(openSettings).toBeTypeOf("function"));
     fireEvent.contextMenu(container.querySelector(".status-rail"));
+    fireEvent.click(screen.getByRole("tab", { name: "角色资产" }));
 
     const manager = container.querySelector(".character-assets-manager");
     expect(manager).toBeInTheDocument();

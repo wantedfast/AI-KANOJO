@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  ArrowCounterClockwise,
   ChatCircleDots,
   PaperPlaneTilt,
+  Microphone,
   Pause,
   Play,
-  Record,
   User,
   Waveform,
   X,
@@ -23,6 +22,24 @@ const PHASE_LABELS = {
   paused: "已暂停",
   error: "出错了",
 };
+
+export function VoiceSessionRail({ snapshot, onPause, onResume, onEnd }) {
+  const recoverable = snapshot.phase === "paused" || snapshot.phase === "error";
+  const label = PHASE_LABELS[snapshot.phase] ?? PHASE_LABELS.idle;
+  return (
+    <div className={`voice-session-rail phase-${snapshot.phase}`} aria-label="语音会话控制">
+      <span className="voice-session-phase">
+        {snapshot.phase === "speaking" ? <Waveform weight="light" aria-hidden="true" /> : <Microphone weight="light" aria-hidden="true" />}
+        <strong>{label}</strong>
+        <i className="voice-session-pulse" aria-hidden="true" />
+      </span>
+      <button type="button" className="voice-session-action" onClick={recoverable ? onResume : onPause} aria-label={recoverable ? "继续语音对话" : "暂停语音对话"}>
+        {recoverable ? <Play weight="fill" /> : <Pause weight="fill" />}
+      </button>
+      <button type="button" className="voice-session-action is-end" onClick={onEnd} aria-label="结束语音对话"><X weight="bold" /></button>
+    </div>
+  );
+}
 
 function formatTime(value) {
   if (!value) return "";
@@ -107,9 +124,7 @@ export function TextChatPanel({ snapshot, onClose, onSend }) {
   );
 }
 
-export function VoiceConversationPopover({ snapshot, portraitSrc, onPause, onResume, onEnd, onRetry }) {
-  const paused = snapshot.phase === "paused";
-  const recoverable = paused || snapshot.phase === "error";
+export function VoiceConversationPopover({ snapshot, onRetry }) {
   const turns = snapshot.voiceTurns || [];
   const currentTurn = turns.find((turn) => turn.turnId === snapshot.activeTurnId) || turns.at(-1);
   const currentTranscript = currentTurn?.transcriptFinal
@@ -122,16 +137,6 @@ export function VoiceConversationPopover({ snapshot, portraitSrc, onPause, onRes
     : snapshot.phase === "speaking" ? "正在回复…" : "");
   return (
     <section className={`conversation-panel voice-popover phase-${snapshot.phase}`} aria-label="简短语音对话" data-testid="voice-popover">
-      <header className="voice-title-row">
-        <strong>语音对话</strong>
-        <Waveform weight="light" aria-hidden="true" />
-      </header>
-
-      <header className="voice-status-row">
-        <span className="voice-status-icon" aria-hidden="true"><Record weight="duotone" /></span>
-        <strong>{PHASE_LABELS[snapshot.phase] ?? PHASE_LABELS.idle}</strong>
-        <Waveform className="voice-live-wave" weight="light" aria-hidden="true" />
-      </header>
       <span className="voice-debug-state" data-testid="voice-debug-state" aria-hidden="true">{snapshot.voiceState || "Idle"}</span>
 
       <div className="voice-caption-list" aria-live="polite" data-testid="voice-caption-list">
@@ -151,20 +156,11 @@ export function VoiceConversationPopover({ snapshot, portraitSrc, onPause, onRes
         </div>
       </div>
       <div className="voice-line is-assistant">
-        <span className="voice-reply-avatar" aria-hidden="true"><img src={portraitSrc} alt="" draggable="false" /></span>
+        <ChatCircleDots weight="light" aria-hidden="true" />
         <span>{assistantStatus || "罗照月的回答会显示在这里。"}</span>
       </div>
 
       {snapshot.error && <div className="conversation-error" role="status">{snapshot.error}</div>}
-      <footer className="voice-popover-footer">
-        <span><ArrowCounterClockwise weight="light" aria-hidden="true" />回复后继续倾听</span>
-        <div>
-          <button type="button" className="voice-control-button" onClick={recoverable ? onResume : onPause} aria-label={recoverable ? "继续语音对话" : "暂停语音对话"}>
-            {recoverable ? <Play weight="fill" /> : <Pause weight="fill" />}
-          </button>
-          <button type="button" className="voice-control-button is-end" onClick={onEnd} aria-label="结束语音对话"><X weight="bold" /></button>
-        </div>
-      </footer>
     </section>
   );
 }

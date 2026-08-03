@@ -81,14 +81,15 @@ if (
   || !report.renderer.resleepAvatar.src?.endsWith("idle.png")
   || Math.abs(report.renderer.resleepAvatar.longEdge - 160) > 1
   || !report.renderer.lockedApplied
-  || !report.renderer.runtimeAvatar?.slotPresent
-  || !report.renderer.runtimeAvatar.orderCorrect
-  || Math.abs(report.renderer.runtimeAvatar.longEdge - 160) > 1
-  || report.renderer.runtimeAvatar.overlapsCodex
+  || !report.renderer.voiceRail?.present
+  || !report.renderer.voiceRail.featureControlsHidden
+  || !report.renderer.voiceRail.runtimeAvatarHidden
+  || !report.renderer.voiceRail.orderCorrect
+  || report.renderer.voiceRail.overlapsCodex
   || report.renderer.portrait?.rect?.width > 230
   || report.renderer.portrait?.rect?.x + report.renderer.portrait?.rect?.width < report.window.visualBounds.rail.x
   || !report.renderer.windowControls?.visible
-  || report.renderer.windowControls.itemCount !== 2
+  || report.renderer.windowControls.itemCount !== 3
   || report.renderer.windowControls.closeColor !== "rgb(255, 95, 87)"
   || report.renderer.windowControls.minimizeColor !== "rgb(254, 188, 46)"
   || !report.renderer.windowControls.vertical
@@ -111,6 +112,8 @@ if (
   || !report.renderer.settingsVisible
   || !report.renderer.settingsLayout?.aligned
   || report.renderer.settingsLayout.fieldCount !== 3
+  || !report.renderer.settingsLayout.voiceTabVisible
+  || !report.renderer.settingsLayout.characterTabVisible
   || !report.renderer.settingsLayout.assetManagerVisible
   || report.renderer.settingsLayout.assetImportActionCount !== 5
 ) {
