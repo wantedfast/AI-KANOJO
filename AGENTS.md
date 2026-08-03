@@ -1,5 +1,10 @@
 # Prototype Instructions
 
+## Highest-priority realtime interruption echo guard (v3.0 selected)
+
+- Keep V3 Conversational interruption enabled, but enable ElevenAgent VAD background voice detection and the independent Scribe caption sidecar's background-audio filter. Speaker playback, nearby speech, and ambient noise must not create a new user turn after the Agent finishes speaking.
+- A reply completion without a genuine lexical user utterance must transition through `completed` back to `listening`; it must not re-enter `thinking`. Preserve genuine user barge-in while the Agent is speaking.
+
 ## Highest-priority realtime caption language constraint (v2.9 selected)
 
 - The independent Scribe v2 Realtime caption sidecar must restrict language identification to the product's supported set: Chinese as the primary language with English and Japanese as secondary languages. Do not allow unrestricted 90-language auto-detection, which can show unrelated-language partial captions for short or noisy speech.

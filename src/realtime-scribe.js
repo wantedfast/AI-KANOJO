@@ -53,6 +53,7 @@ export class RealtimeScribe {
       url.searchParams.set("language_code", "zh");
       url.searchParams.append("secondary_languages", "en");
       url.searchParams.append("secondary_languages", "ja");
+      url.searchParams.set("filter_background_audio", "true");
       url.searchParams.set("token", this.token);
       this.socket = new WebSocket(url);
       this.socket.onopen = () => this.onStatus?.("listening");

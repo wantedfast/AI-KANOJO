@@ -82,6 +82,7 @@ describe("RealtimeScribe caption stream", () => {
     const url = new URL(connectionUrl);
     expect(url.searchParams.get("language_code")).toBe("zh");
     expect(url.searchParams.getAll("secondary_languages")).toEqual(["en", "ja"]);
+    expect(url.searchParams.get("filter_background_audio")).toBe("true");
     scribe.stop();
   });
 });

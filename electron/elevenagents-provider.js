@@ -174,6 +174,10 @@ const buildConfiguredConversationConfig = (agent, modelId, voiceId) => {
     ja: buildLanguagePreset("ja"),
   };
   config.asr = { ...(config.asr || {}), provider: EXPECTED.asrProvider };
+  config.vad = {
+    ...(config.vad || {}),
+    background_voice_detection: EXPECTED.backgroundVoiceDetection,
+  };
   const tts = { ...(config.tts || {}), model_id: EXPECTED.ttsModelId };
   if (voiceId) tts.voice_id = voiceId;
   delete tts.fallback_enabled;
@@ -289,6 +293,7 @@ export const inspectElevenAgentConfig = (agent) => {
   const turn = config.turn || {};
   const tts = config.tts || {};
   const asr = config.asr || {};
+  const vad = config.vad || {};
   const clientEvents = Array.isArray(config.conversation?.client_events) ? config.conversation.client_events : [];
   const languages = new Set([
     normalizeLanguage(config.agent?.language),
@@ -332,6 +337,13 @@ export const inspectElevenAgentConfig = (agent) => {
   }
   if (asr.provider !== EXPECTED.asrProvider) {
     issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.asr.provider", "语音识别必须使用 Scribe v2 Realtime。"));
+  }
+  if (vad.background_voice_detection !== EXPECTED.backgroundVoiceDetection) {
+    issues.push(issue(
+      CODES.TURN_CONFIG_MISMATCH,
+      "conversation_config.vad.background_voice_detection",
+      "实时打断必须启用背景人声检测，避免扬声器回声或环境声生成假用户轮次。",
+    ));
   }
   if (tts.model_id !== EXPECTED.ttsModelId) {
     issues.push(issue(CODES.TTS_MODEL_MISMATCH, "conversation_config.tts.model_id", `TTS 模型必须为 ${EXPECTED.ttsModelId}。`));

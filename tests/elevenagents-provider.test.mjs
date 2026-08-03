@@ -17,6 +17,7 @@ const validAgent = (overrides = {}) => ({
   conversation_config: {
     language_presets: { en: {}, ja: {} },
     asr: { provider: "scribe_realtime" },
+    vad: { background_voice_detection: true },
     turn: {
       turn_eagerness: "normal",
       turn_timeout: 30,
@@ -95,6 +96,7 @@ describe("ElevenAgents provider", () => {
     };
     existing.conversation_config.turn.turn_timeout = 7;
     existing.conversation_config.turn.silence_end_call_timeout = 60;
+    existing.conversation_config.vad.background_voice_detection = false;
     const published = validAgent({ name: existing.name });
     published.conversation_config.tts.stability = 0.42;
     const fetchImpl = vi.fn(async (url, options = {}) => {
@@ -129,6 +131,7 @@ describe("ElevenAgents provider", () => {
       silence_end_call_timeout: -1,
     });
     expect(body.conversation_config.turn.soft_timeout_config).toEqual({ timeout_seconds: -1, message: "Hmm..." });
+    expect(body.conversation_config.vad).toMatchObject({ background_voice_detection: true });
     expect(JSON.stringify(body)).not.toContain("secret");
   });
 
@@ -189,12 +192,16 @@ describe("ElevenAgents provider", () => {
     agent.conversation_config.asr.provider = "elevenlabs";
     agent.conversation_config.tts = { model_id: "eleven_flash_v2_5", voice_id: "" };
     agent.conversation_config.turn.turn_eagerness = "eager";
+    agent.conversation_config.vad.background_voice_detection = false;
     agent.conversation_config.conversation.client_events = ["audio"];
     const result = inspectElevenAgentConfig(agent);
     expect(result.ok).toBe(false);
     expect(result.issues.map((item) => item.code)).toEqual(expect.arrayContaining([
       "QWEN_MODEL_MISMATCH", "TTS_MODEL_MISMATCH", "VOICE_NOT_CONFIGURED", "TURN_CONFIG_MISMATCH",
     ]));
+    expect(result.issues).toContainEqual(expect.objectContaining({
+      field: "conversation_config.vad.background_voice_detection",
+    }));
     expect(JSON.stringify(result)).not.toContain("secret");
   });
 
