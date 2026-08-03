@@ -7,6 +7,53 @@ import {
 
 const now = () => Date.now();
 
+export const VOICE_GREETING_AUDIO_URLS = Object.freeze([
+  "./audio/greetings/gentle-ja.mp3",
+  "./audio/greetings/gentle-en.mp3",
+]);
+
+export function playRandomVoiceGreeting({
+  signal,
+  sources = VOICE_GREETING_AUDIO_URLS,
+  randomFn = Math.random,
+} = {}) {
+  if (signal?.aborted || typeof Audio !== "function" || !sources.length) return Promise.resolve();
+  const index = Math.min(sources.length - 1, Math.floor(Math.max(0, randomFn()) * sources.length));
+  const audio = new Audio(sources[index]);
+  audio.preload = "auto";
+  return new Promise((resolve) => {
+    let settled = false;
+    let safetyTimer = null;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(safetyTimer);
+      audio.removeEventListener?.("ended", finish);
+      audio.removeEventListener?.("error", finish);
+      signal?.removeEventListener?.("abort", abort);
+      resolve();
+    };
+    const abort = () => {
+      try {
+        audio.pause?.();
+        audio.currentTime = 0;
+      } catch {
+        // The greeting is optional and may already have finished loading.
+      }
+      finish();
+    };
+    audio.addEventListener?.("ended", finish, { once: true });
+    audio.addEventListener?.("error", finish, { once: true });
+    signal?.addEventListener?.("abort", abort, { once: true });
+    safetyTimer = setTimeout(finish, 15000);
+    try {
+      Promise.resolve(audio.play?.()).catch(finish);
+    } catch {
+      finish();
+    }
+  });
+}
+
 export const EMPTY_CONVERSATION_SNAPSHOT = Object.freeze({
   configured: true,
   messages: [],
@@ -187,6 +234,7 @@ export function createElevenAgentsConversationAdapter({
   logger = console,
   createCaptionTranscriber = (options) => new RealtimeScribe(options),
   playStandaloneAudio,
+  playVoiceGreeting = api?.isDesktop ? playRandomVoiceGreeting : async () => {},
 } = {}) {
   const store = createStore({ configured: false });
   let session = null;
@@ -208,9 +256,15 @@ export function createElevenAgentsConversationAdapter({
   let vadActive = false;
   let detachTranscriptionListener = null;
   let captionTranscriber = null;
+  let greetingController = null;
   const sendTimers = new Map();
 
   const usesStandaloneV3 = () => voicePreferences.ttsModelId === ELEVEN_V3_MODEL_ID;
+  const stopVoiceGreeting = () => {
+    const controller = greetingController;
+    greetingController = null;
+    controller?.abort();
+  };
   const stopStandaloneOutput = () => {
     standaloneOutputRun += 1;
     standaloneOutputPending = false;
@@ -559,6 +613,7 @@ export function createElevenAgentsConversationAdapter({
   };
   const closeCurrentSession = async ({ reset = false, preserveSetupTimer = false } = {}) => {
     runId += 1;
+    stopVoiceGreeting();
     stopStandaloneOutput();
     clearTimer(completionTimer);
     completionTimer = null;
@@ -893,19 +948,27 @@ export function createElevenAgentsConversationAdapter({
       error: "",
     });
     clearSetupTimer();
-    setupTimer = setTimer(() => {
-      if (store.getSnapshot().phase !== "connecting") return;
-      runId += 1;
-      cancelPendingCredential();
-      const current = session;
-      session = null;
-      sessionKind = null;
-      Promise.resolve(current?.endSession?.()).catch(() => {});
-      publishError("ElevenAgents 连接超时，请检查网络和麦克风后重试。");
-    }, setupTimeoutMs);
-    openSession("voice", lastInputDeviceId).catch((error) => {
-      clearSetupTimer();
-      if (store.getSnapshot().phase !== "error") publishError(error.message);
+    stopVoiceGreeting();
+    const greetingRun = ++runId;
+    const controller = new AbortController();
+    greetingController = controller;
+    Promise.resolve(playVoiceGreeting({ signal: controller.signal })).catch(() => {}).then(() => {
+      if (greetingController === controller) greetingController = null;
+      if (controller.signal.aborted || greetingRun !== runId || store.getSnapshot().phase !== "connecting") return;
+      setupTimer = setTimer(() => {
+        if (store.getSnapshot().phase !== "connecting") return;
+        runId += 1;
+        cancelPendingCredential();
+        const current = session;
+        session = null;
+        sessionKind = null;
+        Promise.resolve(current?.endSession?.()).catch(() => {});
+        publishError("ElevenAgents 连接超时，请检查网络和麦克风后重试。");
+      }, setupTimeoutMs);
+      openSession("voice", lastInputDeviceId).catch((error) => {
+        clearSetupTimer();
+        if (store.getSnapshot().phase !== "error") publishError(error.message);
+      });
     });
   };
   const sendText = (content) => {

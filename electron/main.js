@@ -607,7 +607,7 @@ async function runSmokeCheck(reportPath) {
          characterTabVisible: Boolean(characterTab),
         assetManagerVisible: Boolean(assetManager),
         assetImportActionCount: assetManager?.querySelectorAll('button[aria-label^="替换"]').length || 0,
-        aligned: selects.length === 3
+        aligned: selects.length === 2
           && selects.every((select) => Math.abs(select.top - selects[0].top) <= 1 && Math.abs(select.height - selects[0].height) <= 1),
         selects,
       };

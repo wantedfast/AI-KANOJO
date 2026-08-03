@@ -9,7 +9,7 @@ const configuredStatus = { configured: true, issues: [] };
 
 afterEach(() => vi.unstubAllGlobals());
 
-const createHarness = ({ credential, sendTimeoutMs = 8000, createCaptionTranscriber, playStandaloneAudio } = {}) => {
+const createHarness = ({ credential, sendTimeoutMs = 8000, createCaptionTranscriber, playStandaloneAudio, playVoiceGreeting } = {}) => {
   let callbacks;
   const roomListeners = new Map();
   const clonedMicrophoneTrack = { enabled: true, stop: vi.fn() };
@@ -72,11 +72,37 @@ const createHarness = ({ credential, sendTimeoutMs = 8000, createCaptionTranscri
     logger,
     ...(createCaptionTranscriber ? { createCaptionTranscriber } : {}),
     ...(playStandaloneAudio ? { playStandaloneAudio } : {}),
+    ...(playVoiceGreeting ? { playVoiceGreeting } : {}),
   });
   return { adapter, api, conversationClient, session, room, logs, getCallbacks: () => callbacks };
 };
 
 describe("ElevenAgents renderer adapter", () => {
+  it("plays one greeting before opening the microphone session and can cancel it", async () => {
+    let finishGreeting;
+    const greetingSignals = [];
+    const playVoiceGreeting = vi.fn(({ signal }) => {
+      greetingSignals.push(signal);
+      return new Promise((resolve) => { finishGreeting = resolve; });
+    });
+    const { adapter, conversationClient } = createHarness({ playVoiceGreeting });
+
+    adapter.startVoice("microphone-123", { ttsModelId: "eleven_v3_conversational" });
+    expect(adapter.getSnapshot().phase).toBe("connecting");
+    expect(playVoiceGreeting).toHaveBeenCalledOnce();
+    expect(conversationClient.startSession).not.toHaveBeenCalled();
+
+    finishGreeting();
+    await vi.waitFor(() => expect(conversationClient.startSession).toHaveBeenCalledOnce());
+
+    adapter.endVoice();
+    adapter.startVoice("microphone-123", { ttsModelId: "eleven_v3_conversational" });
+    expect(playVoiceGreeting).toHaveBeenCalledTimes(2);
+    adapter.endVoice();
+    expect(greetingSignals[1].aborted).toBe(true);
+    expect(conversationClient.startSession).toHaveBeenCalledOnce();
+  });
+
   it("normalizes stale Custom LLM and microphone failures into actionable errors", () => {
     expect(normalizeConversationClientError("Server error: unknown server")).toContain("Qwen");
     expect(normalizeConversationClientError("custom_llm_error: Failed to generate response from custom LLM")).toContain("Qwen");

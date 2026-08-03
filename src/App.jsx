@@ -14,7 +14,6 @@ import { EMPTY_CONVERSATION_SNAPSHOT, resolveConversationAdapter } from "./conve
 import { TextChatPanel, VoiceConversationPopover, VoiceSessionRail } from "./conversation-surfaces.jsx";
 import { CharacterAssetsManager } from "./character-assets-manager.jsx";
 import {
-  ELEVEN_TTS_MODEL_OPTIONS,
   ELEVEN_V3_CONVERSATIONAL_MODEL_ID,
   ELEVEN_V3_MODEL_ID,
 } from "../shared/model-contracts.js";
@@ -612,9 +611,6 @@ export function App({ runtimeApi = api, conversationAdapter } = {}) {
                 </select></label>
                 <div className="voice-setting-meta"><small className={`settings-hint ${voiceCatalogState === "error" ? "is-error" : ""}`}>{voiceCatalogState === "error" ? voiceCatalogError : "选择后将同步到语音 Agent，下次语音对话生效"}</small><button type="button" className="voice-refresh-button" onClick={refreshVoices} disabled={voiceCatalogState === "loading"}>{voiceCatalogState === "loading" ? "加载中" : "刷新音色"}</button></div>
               </div>
-              <label><span>语音模型</span><select aria-label="语音模型" title={ELEVEN_TTS_MODEL_OPTIONS.find((model) => model.id === settings.ttsModelId)?.label || "语音模型"} value={settings.ttsModelId} onChange={(event) => setSettings({ ...settings, ttsModelId: event.target.value })}>
-                {ELEVEN_TTS_MODEL_OPTIONS.map((model) => <option value={model.id} key={model.id}>{model.label}{model.mode === "realtime" ? " · 实时优先" : " · 表现力优先"}</option>)}
-              </select><small className="settings-hint">Conversational 响应更快；标准 V3 使用独立合成，音质优先但延迟更高。</small></label>
               <label><span>麦克风</span><select value={settings.microphoneId} onChange={(event) => setSettings({ ...settings, microphoneId: event.target.value })}><option value="">系统默认麦克风</option>{microphones.map((device, index) => <option value={device.deviceId} key={device.deviceId}>{device.label || `麦克风 ${index + 1}`}</option>)}</select></label>
             </div>}
             {settingsSection === "character" && <div role="tabpanel" aria-label="角色资产设置"><CharacterAssetsManager

@@ -1,5 +1,11 @@
 # Prototype Instructions
 
+## Highest-priority voice entry preferences (v3.2 selected)
+
+- The microphone hover/focus menu is the sole visible selector for `eleven_v3_conversational` versus standard `eleven_v3`. Keep `ttsModelId` persisted internally, but do not duplicate the model selector in Settings.
+- Settings voice preferences contain only the ElevenLabs voice and microphone selectors.
+- Entering voice conversation randomly plays one bundled gentle Japanese or English greeting before opening the WebRTC microphone session. The greeting must be cancellable, must not be captured by Scribe, and must not alter either model's established turn/interruption behavior.
+
 ## Highest-priority realtime interruption echo guard (v3.0 selected)
 
 - Keep V3 Conversational interruption enabled, but enable ElevenAgent VAD background voice detection and the independent Scribe caption sidecar's background-audio filter. Speaker playback, nearby speech, and ambient noise must not create a new user turn after the Agent finishes speaking.

@@ -118,7 +118,7 @@ if (
   || Math.abs(report.renderer.minimizeToggle.expandedWidth - 520) > 1
   || !report.renderer.settingsVisible
   || !report.renderer.settingsLayout?.aligned
-  || report.renderer.settingsLayout.fieldCount !== 3
+  || report.renderer.settingsLayout.fieldCount !== 2
   || !report.renderer.settingsLayout.voiceTabVisible
   || !report.renderer.settingsLayout.characterTabVisible
   || !report.renderer.settingsLayout.assetManagerVisible
