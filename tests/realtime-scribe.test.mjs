@@ -52,4 +52,36 @@ describe("RealtimeScribe caption stream", () => {
     expect(track.stop).toHaveBeenCalledOnce();
     expect(closeAudio).toHaveBeenCalledOnce();
   });
+
+  it("limits automatic caption language detection to Chinese, English, and Japanese", async () => {
+    const sourceStream = {
+      getAudioTracks: () => [],
+      getTracks: () => [],
+    };
+    const sourceNode = { connect: vi.fn(), disconnect: vi.fn() };
+    const processor = { connect: vi.fn(), disconnect: vi.fn(), onaudioprocess: null };
+    globalThis.AudioContext = class {
+      sampleRate = 48000;
+      createMediaStreamSource = vi.fn(() => sourceNode);
+      createScriptProcessor = vi.fn(() => processor);
+      close = vi.fn(async () => {});
+      destination = {};
+    };
+    let connectionUrl = "";
+    globalThis.WebSocket = class {
+      static OPEN = 1;
+      readyState = 0;
+      send = vi.fn();
+      close = vi.fn();
+      constructor(url) { connectionUrl = String(url); }
+    };
+
+    const scribe = new RealtimeScribe({ token: "token", sourceStream });
+    await scribe.start();
+
+    const url = new URL(connectionUrl);
+    expect(url.searchParams.get("language_code")).toBe("zh");
+    expect(url.searchParams.getAll("secondary_languages")).toEqual(["en", "ja"]);
+    scribe.stop();
+  });
 });

@@ -1,5 +1,10 @@
 # Prototype Instructions
 
+## Highest-priority realtime caption language constraint (v2.9 selected)
+
+- The independent Scribe v2 Realtime caption sidecar must restrict language identification to the product's supported set: Chinese as the primary language with English and Japanese as secondary languages. Do not allow unrestricted 90-language auto-detection, which can show unrelated-language partial captions for short or noisy speech.
+- This constraint applies only to live caption recognition. Preserve per-turn Chinese/English/Japanese switching and do not force the Agent reply language independently of the user's current turn.
+
 ## Highest-priority microphone mode picker override (v2.8 selected)
 
 - The idle microphone remains a one-click start using the last saved voice mode. Hovering it for roughly 350ms or focusing it from the keyboard opens a compact two-option menu above the capsule.

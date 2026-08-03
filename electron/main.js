@@ -413,12 +413,7 @@ async function runSmokeCheck(reportPath) {
         overlapsAvatar: Boolean(pickerRect && avatarRect && pickerRect.x < avatarRect.right && pickerRect.right > avatarRect.x && pickerRect.y < avatarRect.bottom && pickerRect.bottom > avatarRect.y),
         overlapsCodex: Boolean(pickerRect && codexRect && pickerRect.x < codexRect.right && pickerRect.right > codexRect.x && pickerRect.y < codexRect.bottom && pickerRect.bottom > codexRect.y),
       };
-      microphone?.blur();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      avatar.click();
-      await new Promise((resolve) => setTimeout(resolve, 80));
-      const afterListening = document.querySelector(".state-listening") !== null;
-      return { beforeIdle, afterListening, voiceModePicker };
+      return { beforeIdle, voiceModePicker };
     })()
   `, true);
   if (renderer.voiceModePicker.pickerRect) {
@@ -433,6 +428,15 @@ async function runSmokeCheck(reportPath) {
       await new Promise((resolve) => setTimeout(resolve, 30));
     }
   }
+  renderer.afterListening = await window.webContents.executeJavaScript(`
+    (async () => {
+      document.querySelector('[aria-label="开始语音对话"]')?.blur();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      document.querySelector('.avatar-button')?.click();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      return document.querySelector('.state-listening') !== null;
+    })()
+  `, true);
   await new Promise((resolve) => setTimeout(resolve, 280));
   renderer.portrait = await window.webContents.executeJavaScript(`
     (() => {

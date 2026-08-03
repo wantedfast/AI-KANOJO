@@ -50,6 +50,9 @@ export class RealtimeScribe {
       url.searchParams.set("audio_format", "pcm_16000");
       url.searchParams.set("commit_strategy", "vad");
       url.searchParams.set("vad_silence_threshold_secs", "1.2");
+      url.searchParams.set("language_code", "zh");
+      url.searchParams.append("secondary_languages", "en");
+      url.searchParams.append("secondary_languages", "ja");
       url.searchParams.set("token", this.token);
       this.socket = new WebSocket(url);
       this.socket.onopen = () => this.onStatus?.("listening");
