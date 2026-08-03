@@ -267,7 +267,7 @@ export function createElevenAgentsConversationAdapter({
   };
   const ensureActiveTurn = ({ speechDetected = false } = {}) => {
     const current = activeTurnId && findTurn(activeTurnId);
-    if (current && !["complete", "send_failed", "error"].includes(current.status)) {
+    if (current && !["complete", "interrupted", "send_failed", "error"].includes(current.status)) {
       if (speechDetected && !current.speechDetected) {
         updateTurn(current.turnId, { speechDetected: true });
         logTurn(current.turnId, "speechDetected");
@@ -304,6 +304,37 @@ export function createElevenAgentsConversationAdapter({
     const timer = sendTimers.get(turnId);
     if (timer != null) clearTimer(timer);
     sendTimers.delete(turnId);
+  };
+  const interruptActiveConversationalTurn = (detail = undefined) => {
+    if (usesStandaloneV3()) return false;
+    const turnId = activeTurnId;
+    const turn = turnId && findTurn(turnId);
+    if (!turn?.responseStarted || turn.responseCompleted) return false;
+    clearTimer(completionTimer);
+    completionTimer = null;
+    clearSendTimer(turnId);
+    updateTurn(turnId, {
+      status: "interrupted",
+      responseCompleted: true,
+    });
+    logTurn(turnId, "interrupted", detail);
+    logTurn(turnId, "responseCompleted", "interrupted");
+    activeTurnId = "";
+    vadActive = false;
+    store.publish({
+      activeTurnId: "",
+      phase: "listening",
+      voiceState: "Listening",
+      reply: "",
+      transcriptPartial: "",
+      error: "",
+    });
+    return true;
+  };
+  const prepareConversationalTranscript = () => {
+    if (!usesStandaloneV3() && store.getSnapshot().phase === "speaking") {
+      interruptActiveConversationalTurn("user-speech");
+    }
   };
   const discardNonSpeechTurn = () => {
     const turn = activeTurnId && findTurn(activeTurnId);
@@ -385,6 +416,7 @@ export function createElevenAgentsConversationAdapter({
   const receivePartialTranscript = (value) => {
     const text = String(value || "").trim();
     if (!hasLexicalContent(text)) return;
+    prepareConversationalTranscript();
     const turnId = ensureActiveTurn({ speechDetected: true });
     const turn = findTurn(turnId);
     if (turn?.messageSent) return;
@@ -405,6 +437,7 @@ export function createElevenAgentsConversationAdapter({
       discardNonSpeechTurn();
       return;
     }
+    prepareConversationalTranscript();
     const turnId = ensureActiveTurn({ speechDetected: true });
     const turn = findTurn(turnId);
     if (turn?.transcriptFinal !== text) logTurn(turnId, "transcriptFinal", text);
@@ -495,7 +528,8 @@ export function createElevenAgentsConversationAdapter({
     captionTranscriber = transcriber;
     try {
       await transcriber.start();
-      if (["speaking", "paused"].includes(store.getSnapshot().phase)) transcriber.setMuted?.(true);
+      const phase = store.getSnapshot().phase;
+      if (phase === "paused" || (phase === "speaking" && usesStandaloneV3())) transcriber.setMuted?.(true);
     } catch (error) {
       if (captionTranscriber === transcriber) captionTranscriber = null;
       if (currentRun === runId) {
@@ -677,6 +711,11 @@ export function createElevenAgentsConversationAdapter({
         });
       }
     },
+    onInterruption: ({ event_id: eventId } = {}) => {
+      if (currentRun !== runId || kind !== "voice" || usesStandaloneV3()) return;
+      if (store.getSnapshot().phase !== "speaking") return;
+      interruptActiveConversationalTurn(eventId == null ? undefined : { eventId });
+    },
     onModeChange: ({ mode }) => {
       if (currentRun !== runId || kind !== "voice") return;
       clearTimer(completionTimer);
@@ -695,10 +734,11 @@ export function createElevenAgentsConversationAdapter({
         }
         return;
       }
+      if (store.getSnapshot().phase === "paused") return;
       if (mode === "speaking") {
         vadActive = false;
-        captionTranscriber?.setMuted?.(true);
-        Promise.resolve(session?.setMicMuted?.(true)).catch((error) => publishError(error.message));
+        captionTranscriber?.setMuted?.(false);
+        Promise.resolve(session?.setMicMuted?.(false)).catch((error) => publishError(error.message));
         const turnId = activeTurnId;
         if (turnId) {
           const turn = findTurn(turnId);
@@ -737,8 +777,14 @@ export function createElevenAgentsConversationAdapter({
     onVadScore: ({ vadScore }) => {
       if (currentRun !== runId || kind !== "voice") return;
       const speechNow = Number(vadScore) >= 0.35;
-      if (speechNow && !vadActive && !["speaking", "paused", "error"].includes(store.getSnapshot().phase)) {
-        ensureActiveTurn({ speechDetected: true });
+      if (speechNow && !vadActive) {
+        const phase = store.getSnapshot().phase;
+        if (phase === "speaking" && !usesStandaloneV3()) {
+          interruptActiveConversationalTurn("vad");
+        }
+        if (!["speaking", "paused", "error"].includes(store.getSnapshot().phase)) {
+          ensureActiveTurn({ speechDetected: true });
+        }
       }
       vadActive = speechNow;
     },

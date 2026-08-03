@@ -1,5 +1,12 @@
 # Prototype Instructions
 
+## Highest-priority V3 Conversational interruption override (v2.7 selected)
+
+- Keep the existing ElevenAgents WebRTC path for `eleven_v3_conversational`; do not replace it with a local TTS playback loop.
+- While V3 Conversational is speaking, keep the Agent microphone and realtime caption sidecar live so ElevenAgents can detect user barge-in. Handle the SDK `onInterruption` event by completing the interrupted response, clearing its active turn, and creating a distinct turn only when new speech or lexical transcription arrives.
+- Manual pause, end, error, and settings transitions still mute or close the microphone and must ignore late interruption/mode events.
+- Standard `eleven_v3` remains a separate local synthesis path. It mutes the microphone during playback and is intentionally non-interruptible.
+
 ## Highest-priority active conversation UI override (v2.6 selected)
 
 - The large 2D conversation portrait is the sole speaking character during voice mode. Hide the three default feature icons and the runtime 8-bit avatar while voice is active; replace their combined rail space with one dynamic voice-session control showing the current phase, pause/resume, and end. Keep the existing Codex block, traffic-light controls, and 520×80 capsule geometry.

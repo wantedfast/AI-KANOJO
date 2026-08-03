@@ -170,6 +170,71 @@ describe("ElevenAgents renderer adapter", () => {
     expect(adapter.getSnapshot().phase).toBe("listening");
   });
 
+  it("keeps V3 Conversational listening and isolates the new turn when the user interrupts", async () => {
+    const { adapter, conversationClient, session, room, logs, getCallbacks } = createHarness();
+    adapter.startVoice("microphone-123", { ttsModelId: "eleven_v3_conversational" });
+    await vi.waitFor(() => expect(conversationClient.startSession).toHaveBeenCalledOnce());
+
+    getCallbacks().onMessage({ role: "user", message: "first question" });
+    getCallbacks().onMessage({ role: "agent", message: "first long reply" });
+    getCallbacks().onModeChange({ mode: "speaking" });
+    const firstTurnId = adapter.getSnapshot().activeTurnId;
+
+    expect(session.setMicMuted).not.toHaveBeenCalledWith(true);
+    getCallbacks().onInterruption({ event_id: 42 });
+    getCallbacks().onVadScore({ vadScore: 0.8 });
+    room.emit("transcriptionReceived", [{ id: "interrupt-partial", text: "second", final: false }], room.localParticipant);
+    room.emit("transcriptionReceived", [{ id: "interrupt-final", text: "second question", final: true }], room.localParticipant);
+    getCallbacks().onMessage({ role: "user", message: "second question" });
+
+    const snapshot = adapter.getSnapshot();
+    const firstTurn = snapshot.voiceTurns.find((turn) => turn.turnId === firstTurnId);
+    const secondTurn = snapshot.voiceTurns.find((turn) => turn.turnId === snapshot.activeTurnId);
+    expect(firstTurn).toMatchObject({ status: "interrupted", responseStarted: true, responseCompleted: true });
+    expect(secondTurn).toMatchObject({ transcriptFinal: "second question", messageSent: true, status: "thinking" });
+    expect(secondTurn.turnId).not.toBe(firstTurnId);
+    expect(logs.some((entry) => entry.turnId === firstTurnId && entry.event === "interrupted")).toBe(true);
+  });
+
+  it("keeps standalone Eleven v3 non-interruptible while its local audio is playing", async () => {
+    let finishPlayback;
+    const playStandaloneAudio = vi.fn(() => new Promise((resolve) => { finishPlayback = resolve; }));
+    const { adapter, conversationClient, session, getCallbacks } = createHarness({ playStandaloneAudio });
+    adapter.startVoice("microphone-123", { voiceId: "YyODrkDd1qMUj9jupJch", ttsModelId: "eleven_v3" });
+    await vi.waitFor(() => expect(conversationClient.startSession).toHaveBeenCalledOnce());
+
+    getCallbacks().onMessage({ role: "user", message: "first question" });
+    getCallbacks().onMessage({ role: "agent", message: "standalone reply" });
+    await vi.waitFor(() => expect(adapter.getSnapshot().phase).toBe("speaking"));
+    const firstTurnId = adapter.getSnapshot().activeTurnId;
+
+    expect(session.setMicMuted).toHaveBeenCalledWith(true);
+    getCallbacks().onInterruption({ event_id: 43 });
+    getCallbacks().onVadScore({ vadScore: 0.8 });
+    expect(adapter.getSnapshot()).toMatchObject({ phase: "speaking", activeTurnId: firstTurnId });
+    expect(adapter.getSnapshot().voiceTurns).toHaveLength(1);
+
+    finishPlayback();
+    await vi.waitFor(() => expect(adapter.getSnapshot().phase).toBe("completed"));
+  });
+
+  it("does not let a late interruption event resume a manually paused conversation", async () => {
+    const { adapter, conversationClient, session, getCallbacks } = createHarness();
+    adapter.startVoice("microphone-123", { ttsModelId: "eleven_v3_conversational" });
+    await vi.waitFor(() => expect(conversationClient.startSession).toHaveBeenCalledOnce());
+    getCallbacks().onMessage({ role: "user", message: "first question" });
+    getCallbacks().onMessage({ role: "agent", message: "first reply" });
+    getCallbacks().onModeChange({ mode: "speaking" });
+
+    adapter.pauseVoice();
+    const pausedTurnId = adapter.getSnapshot().activeTurnId;
+    getCallbacks().onInterruption({ event_id: 44 });
+    getCallbacks().onModeChange({ mode: "speaking" });
+
+    expect(adapter.getSnapshot()).toMatchObject({ phase: "paused", activeTurnId: pausedTurnId });
+    expect(session.setMicMuted.mock.calls.at(-1)).toEqual([true]);
+  });
+
   it("does not let the previous playback completion erase a fast second turn", async () => {
     vi.useFakeTimers();
     try {
@@ -249,7 +314,7 @@ describe("ElevenAgents renderer adapter", () => {
     }
   });
 
-  it("uses the realtime Scribe caption sidecar for partial text and mutes it during playback", async () => {
+  it("keeps the realtime Scribe caption sidecar live during V3 Conversational playback", async () => {
     vi.stubGlobal("MediaStream", class {
       constructor(tracks) { this.tracks = tracks; }
       getTracks() { return this.tracks; }
@@ -279,7 +344,8 @@ describe("ElevenAgents renderer adapter", () => {
     getCallbacks().onMessage({ role: "user", message: "real time caption" });
     getCallbacks().onMessage({ role: "agent", message: "reply" });
     getCallbacks().onModeChange({ mode: "speaking" });
-    expect(captionTranscriber.setMuted).toHaveBeenCalledWith(true);
+    expect(captionTranscriber.setMuted).not.toHaveBeenCalledWith(true);
+    expect(captionTranscriber.setMuted).toHaveBeenCalledWith(false);
     getCallbacks().onModeChange({ mode: "listening" });
     expect(captionTranscriber.setMuted).toHaveBeenCalledWith(false);
     adapter.endVoice();
