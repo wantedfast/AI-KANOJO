@@ -641,7 +641,7 @@ button, input, select { font: inherit; }
   width: 220px;
   height: auto;
   user-select: none;
-  filter: drop-shadow(0 16px 26px rgba(0, 0, 0, .28));
+  filter: none;
 }
 
 .conversation-panel {

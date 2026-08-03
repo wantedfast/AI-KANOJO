@@ -86,6 +86,7 @@ if (
   || !report.renderer.voiceRail.runtimeAvatarHidden
   || !report.renderer.voiceRail.orderCorrect
   || report.renderer.voiceRail.overlapsCodex
+  || report.renderer.portrait?.filter !== "none"
   || report.renderer.portrait?.rect?.width > 230
   || report.renderer.portrait?.rect?.x + report.renderer.portrait?.rect?.width < report.window.visualBounds.rail.x
   || !report.renderer.windowControls?.visible

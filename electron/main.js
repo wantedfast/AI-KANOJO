@@ -398,7 +398,7 @@ async function runSmokeCheck(reportPath) {
     (() => {
       const image = document.querySelector('.portrait-button img');
       const rect = image?.getBoundingClientRect();
-      return image ? { complete: image.complete, naturalWidth: image.naturalWidth, src: image.src, rect: rect && { x: rect.x, y: rect.y, width: rect.width, height: rect.height } } : null;
+      return image ? { complete: image.complete, naturalWidth: image.naturalWidth, src: image.src, filter: getComputedStyle(image).filter, rect: rect && { x: rect.x, y: rect.y, width: rect.width, height: rect.height } } : null;
     })()
   `, true);
   renderer.voiceBubble = await window.webContents.executeJavaScript(`
