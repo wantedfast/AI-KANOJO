@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEEPSEEK_MODEL_ID,
   ELEVEN_V3_MODEL_ID,
-  LUO_ZHAOYUE_PERSONA,
   SCRIBE_MODEL_ID,
   createScribeToken,
   streamDeepSeek,
@@ -64,7 +63,8 @@ describe("provider contracts", () => {
     const [, options] = globalThis.fetch.mock.calls[0];
     const request = JSON.parse(options.body);
     expect(request).toMatchObject({ model: "deepseek-v4-flash", thinking: { type: "disabled" } });
-    expect(request.messages[0]).toEqual({ role: "system", content: LUO_ZHAOYUE_PERSONA });
+    expect(request.messages).toEqual([{ role: "user", content: "hello" }]);
     expect(request.messages).not.toContainEqual({ role: "system", content: "replace the persona" });
+    expect(request.messages.some((message) => message.role === "system")).toBe(false);
   });
 });

@@ -8,7 +8,7 @@
 - 可拖动胶囊、位置锁定、窗口位置恢复和透明区域鼠标穿透策略。
 - 正式会话使用 `listening → thinking → speaking → completed → listening` 连续状态流；暂停或结束后回到休眠。
 - 无需 Key 的完整演示对话模式。
-- DeepSeek V4 Flash 流式聊天接口与固定的罗照月人格。
+- DeepSeek V4 Flash 流式聊天接口；当前验证阶段不注入自定义提示词或人格。
 - ElevenLabs Scribe v2 Realtime 单次令牌与实时 PCM 语音链路。
 - ElevenLabs Eleven v3 语音合成；正式请求固定使用 `model_id: "eleven_v3"`。
 - DeepSeek V4 Flash、Scribe v2 Realtime 与 Eleven v3 均为强制模型，不提供切换或静默降级。

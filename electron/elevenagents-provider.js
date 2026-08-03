@@ -1,7 +1,7 @@
 import {
   ELEVENAGENTS_ERROR_CODES as CODES,
   ELEVENAGENTS_EXPECTED_CONFIG as EXPECTED,
-  ELEVENAGENTS_BASE_PROMPT,
+  ELEVENAGENTS_ROUTING_PROMPT,
   ELEVENAGENTS_LANGUAGE_DETECTION_TOOL,
   ElevenAgentsBackendError,
   isValidAgentId,
@@ -130,7 +130,7 @@ const buildConfiguredConversationConfig = (agent, modelId, voiceId) => {
   prompt.custom_llm = null;
   Object.assign(prompt, {
     llm: modelId,
-    prompt: ELEVENAGENTS_BASE_PROMPT,
+    prompt: ELEVENAGENTS_ROUTING_PROMPT,
     ignore_default_personality: true,
     built_in_tools: {
       ...(prompt.built_in_tools || {}),
@@ -303,8 +303,8 @@ export const inspectElevenAgentConfig = (agent) => {
   if (prompt.llm !== EXPECTED.llmType) {
     issues.push(issue(CODES.QWEN_MODEL_MISMATCH, "conversation_config.agent.prompt.llm", `LLM must be ${EXPECTED.llmModelName}.`));
   }
-  if (String(prompt.prompt || "").trim() !== ELEVENAGENTS_BASE_PROMPT) {
-    issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.agent.prompt.prompt", "Agent 必须使用固定的无人格三语基础提示词。"));
+  if (String(prompt.prompt || "").trim() !== ELEVENAGENTS_ROUTING_PROMPT) {
+    issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.agent.prompt.prompt", "Agent 必须且只能使用固定的三语静默路由护栏。"));
   }
   if (prompt.ignore_default_personality !== true) {
     issues.push(issue(CODES.AGENT_CONFIG_MISMATCH, "conversation_config.agent.prompt.ignore_default_personality", "必须关闭 ElevenAgents 默认人格。"));

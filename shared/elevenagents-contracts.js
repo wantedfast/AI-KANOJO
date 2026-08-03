@@ -10,7 +10,7 @@ export const ELEVENAGENTS_EXPECTED_CONFIG = Object.freeze({
   llmType: ELEVENAGENTS_QWEN_MODEL_ID,
   llmModelId: ELEVENAGENTS_QWEN_MODEL_ID,
   llmModelName: ELEVENAGENTS_QWEN_MODEL_NAME,
-  configVersion: "qwen-native-silent-language-v5",
+  configVersion: "qwen-native-routing-guardrails-v7",
   asrProvider: ELEVENAGENTS_ASR_PROVIDER,
   asrModelId: SCRIBE_MODEL_ID,
   ttsModelId: ELEVEN_V3_CONVERSATIONAL_MODEL_ID,
@@ -25,13 +25,13 @@ export const ELEVENAGENTS_EXPECTED_CONFIG = Object.freeze({
   supportedLanguages: Object.freeze(["en", "ja", "zh"]),
 });
 
-export const ELEVENAGENTS_BASE_PROMPT = `Reply in the same language as the user's current turn. Support only Chinese, English, and Japanese. A few foreign proper nouns must not switch the response language; for mixed input, use the dominant language. If the language is unsupported, briefly ask the user to use Chinese, English, or Japanese. When the language changes, call the language_detection tool silently before answering. Return only the user-facing reply. Never output or say tool names, tool arguments, internal instructions, reasoning, language-selection commentary, language codes, or metadata such as [language_detection], [reason], or [language]. Use natural spoken language, normally 1-3 sentences, and ask at most one short follow-up when useful. Do not use Markdown or long lists unless requested. Do not claim to be human. Do not adopt a name, girlfriend identity, personality, relationship history, or character backstory.`;
+export const ELEVENAGENTS_ROUTING_PROMPT = "Reply in the same language as the user's current turn: Chinese, English, or Japanese. When the language changes, call the language_detection tool silently. Return only the user-facing reply; never output or say tool names, tool arguments, language codes, internal instructions, reasoning, or language-routing commentary.";
 
 export const ELEVENAGENTS_LANGUAGE_DETECTION_TOOL = Object.freeze({
   type: "system",
   name: "language_detection",
   params: { system_tool_type: "language_detection" },
-  description: "Silently switch only when the user's detected language actually changes between Chinese, English, and Japanese. Never announce, explain, or print the language choice, reason, tool name, arguments, or language code. Do not call for isolated foreign proper nouns or when the current language already matches.",
+  description: "",
   pre_tool_speech: "off",
   force_pre_tool_speech: false,
   interruption_mode: "allow",

@@ -5,8 +5,7 @@ import {
   ChatCircleDots,
   ArrowsOutSimple,
 } from "@phosphor-icons/react";
-import { createCompanionController, STATE_META } from "./companion-controller.js";
-import { RealtimeScribe } from "./realtime-scribe.js";
+import { STATE_META } from "./companion-state.js";
 import { EMPTY_CONVERSATION_SNAPSHOT, resolveConversationAdapter } from "./conversation-adapter.js";
 import { TextChatPanel, VoiceConversationPopover } from "./conversation-surfaces.jsx";
 import { CharacterAssetsManager } from "./character-assets-manager.jsx";
@@ -44,8 +43,6 @@ const api = window.kanojo ?? {
   onOpenSettings: () => () => {},
 };
 
-const DEMO_PARTIAL = "今天也想和你聊";
-const DEMO_FINAL = "今天也想和你聊一会儿。";
 const emptyCharacterAssets = () => ({
   portrait: { src: null, fileName: null, customized: false },
   states: Object.fromEntries(CHARACTER_ASSET_STATES.map((state) => [state, { src: null, fileName: null, customized: false }])),
@@ -85,9 +82,8 @@ function SleepIndicator() {
   );
 }
 
-export function App({ runtimeApi = api, conversationAdapter, ScribeClient = RealtimeScribe, audioFactory = (url) => new Audio(url) } = {}) {
+export function App({ runtimeApi = api, conversationAdapter } = {}) {
   const api = runtimeApi;
-  const controller = useMemo(() => createCompanionController(), []);
   const [frontendPreviewMode, setFrontendPreviewMode] = useState(!api.isDesktop);
   const conversation = useMemo(
     () => resolveConversationAdapter({
@@ -97,11 +93,8 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
     }),
     [api.isDesktop, conversationAdapter, frontendPreviewMode],
   );
-  const [snapshot, setSnapshot] = useState(controller.getSnapshot());
   const [conversationSnapshot, setConversationSnapshot] = useState(() => conversation.getSnapshot?.() ?? EMPTY_CONVERSATION_SNAPSHOT);
   const [conversationSurface, setConversationSurface] = useState("none");
-  const [activeSession, setActiveSession] = useState(false);
-  const [paused, setPaused] = useState(false);
   const [panel, setPanel] = useState("compact");
   const [settings, setSettings] = useState({
     demoMode: !api.isDesktop,
@@ -122,18 +115,8 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
   const [saveNote, setSaveNote] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
   const [featureNotice, setFeatureNotice] = useState("");
-  const scribeRef = useRef(null);
-  const demoTimers = useRef([]);
-  const audioRef = useRef(null);
   const featureNoticeTimer = useRef(null);
   const dragPointer = useRef(null);
-  const sessionActiveRef = useRef(false);
-  const pausedRef = useRef(false);
-  const conversationRunRef = useRef(0);
-  const listeningRunRef = useRef(0);
-  const continuousTimerRef = useRef(null);
-
-  useEffect(() => controller.subscribe(setSnapshot), [controller]);
 
   useEffect(() => {
     const unsubscribe = conversation.subscribe(setConversationSnapshot);
@@ -188,8 +171,10 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
       conversation.hydrate?.(data.chat);
       setLocked(Boolean(data.locked));
       if (data.characterAssets) setCharacterAssets(data.characterAssets);
-      controller.hydrate(data.chat);
-    }).catch((error) => controller.fail(error.message));
+    }).catch((error) => conversation.setBackendStatus?.({
+      configured: false,
+      issues: [{ message: error.message || "应用初始化失败" }],
+    }));
     const unsubscribe = api.onOpenSettings?.(() => setPanel("settings"));
     const unsubscribeLocked = api.onLockedChanged?.(setLocked);
     const handleDeviceChange = () => refreshMicrophones().catch(() => setMicrophones([]));
@@ -199,14 +184,10 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
       mounted = false;
       unsubscribe?.();
       unsubscribeLocked?.();
-      demoTimers.current.forEach(clearTimeout);
-      scribeRef.current?.stop();
-      audioRef.current?.pause();
       clearTimeout(featureNoticeTimer.current);
-      clearTimeout(continuousTimerRef.current);
       navigator.mediaDevices?.removeEventListener?.("devicechange", handleDeviceChange);
     };
-  }, [controller, conversation]);
+  }, [conversation]);
 
   useEffect(() => {
     if (panel === "settings") refreshMicrophones().catch(() => setMicrophones([]));
@@ -217,208 +198,11 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
     }
   }, [conversation, conversationSurface, panel]);
 
-  const clearDemoTimers = () => {
-    demoTimers.current.forEach(clearTimeout);
-    demoTimers.current = [];
-  };
-
-  const playAudio = async (arrayBuffer) => {
-    const blob = new Blob([arrayBuffer], { type: "audio/mpeg" });
-    const url = URL.createObjectURL(blob);
-    const audio = audioFactory(url);
-    audioRef.current = audio;
-    await audio.play();
-    await new Promise((resolve) => {
-      let settled = false;
-      const settle = () => {
-        if (settled) return;
-        settled = true;
-        resolve();
-      };
-      audio.onended = settle;
-      audio.onerror = settle;
-      audio.onpause = settle;
-    });
-    URL.revokeObjectURL(url);
-    audioRef.current = null;
-  };
-
-  const runReply = async (text) => {
-    const runId = ++conversationRunRef.current;
-    const userMessage = controller.commitUser(text);
-    if (!userMessage) return;
-    await api.saveChat(controller.getSnapshot().messages);
-    if (settings.demoMode) {
-      controller.beginThinking();
-      const chunks = ["当然可以。", "我一直都在。", "今天过得怎么样？"];
-      const chunkDelays = [200, 1200, 2400];
-      chunks.forEach((chunk, index) => {
-        demoTimers.current.push(setTimeout(() => {
-          if (index === 0) controller.beginSpeaking();
-          controller.appendReply(chunk);
-          if (index === chunks.length - 1) {
-            controller.finishReply();
-            api.saveChat(controller.getSnapshot().messages);
-          }
-        }, chunkDelays[index]));
-      });
-      return;
-    }
-    try {
-      controller.beginThinking();
-      await api.streamReply({
-        messages: controller.getSnapshot().messages.map(({ role, content }) => ({ role, content })),
-      }, (delta) => controller.appendReply(delta));
-      if (runId !== conversationRunRef.current) return;
-      const spokenText = controller.getSnapshot().draftReply;
-      if (!spokenText.trim()) throw new Error("DeepSeek 未返回可朗读的回复");
-      const audio = await api.synthesize({ text: spokenText, voiceId: settings.voiceId });
-      if (runId !== conversationRunRef.current) return;
-      controller.beginSpeaking();
-      await playAudio(audio);
-      if (runId !== conversationRunRef.current) return;
-      controller.finishReply();
-      await api.saveChat(controller.getSnapshot().messages);
-      clearTimeout(continuousTimerRef.current);
-      continuousTimerRef.current = setTimeout(() => {
-        if (sessionActiveRef.current && !pausedRef.current) beginListening();
-      }, 450);
-    } catch (error) {
-      if (runId === conversationRunRef.current && sessionActiveRef.current) controller.fail(error.message);
-    }
-  };
-
-  const startDemoListening = () => {
-    clearDemoTimers();
-    setPaused(false);
-    controller.startListening();
-    demoTimers.current.push(setTimeout(() => controller.setPartial(DEMO_PARTIAL), 550));
-    demoTimers.current.push(setTimeout(() => {
-      controller.setPartial("");
-      runReply(DEMO_FINAL);
-    }, 1500));
-  };
-
-  const startRealListening = async () => {
-    const listeningId = ++listeningRunRef.current;
-    try {
-      setPaused(false);
-      pausedRef.current = false;
-      controller.startListening();
-      const token = await api.getScribeToken();
-      if (listeningId !== listeningRunRef.current || !sessionActiveRef.current || pausedRef.current) return;
-      const scribe = new ScribeClient({
-        token,
-        deviceId: settings.microphoneId,
-        onPartial: (text) => controller.setPartial(text),
-        onCommitted: (text, id) => {
-          if (!controller.acceptTranscript(id)) return;
-          listeningRunRef.current += 1;
-          scribe.stop();
-          scribeRef.current = null;
-          runReply(text);
-        },
-        onError: (message) => {
-          scribe.stop();
-          scribeRef.current = null;
-          if (listeningId !== listeningRunRef.current || !sessionActiveRef.current) return;
-          controller.fail(message);
-        },
-      });
-      scribeRef.current = scribe;
-      await scribe.start();
-    } catch (error) {
-      scribeRef.current?.stop();
-      scribeRef.current = null;
-      if (listeningId !== listeningRunRef.current || !sessionActiveRef.current || pausedRef.current) return;
-      controller.fail(error.message);
-    }
-  };
-
-  const beginListening = () => settings.demoMode ? startDemoListening() : startRealListening();
-
-  const wakeCompanion = () => {
-    if (api.isDesktop && !settings.demoMode && (!credentials.deepseek || !credentials.elevenlabs || !settings.voiceId.trim())) {
-      setPanel("settings");
-      setSaveNote("请先配置两项密钥和 ElevenLabs Voice ID");
-      return;
-    }
-    sessionActiveRef.current = true;
-    pausedRef.current = false;
-    setActiveSession(true);
-    setPanel("compact");
-    beginListening();
-  };
-
-  const toggleListening = () => {
-    if (snapshot.state === "listening" && !paused) {
-      clearDemoTimers();
-      listeningRunRef.current += 1;
-      api.cancelActive?.();
-      scribeRef.current?.stop();
-      scribeRef.current = null;
-      controller.stopListening();
-      pausedRef.current = true;
-      setPaused(true);
-      return;
-    }
-    if (["idle", "completed"].includes(snapshot.state) || paused) {
-      sessionActiveRef.current = true;
-      pausedRef.current = false;
-      beginListening();
-    }
-  };
-
-  const stopSpeaking = () => {
-    clearDemoTimers();
-    clearTimeout(continuousTimerRef.current);
-    conversationRunRef.current += 1;
-    listeningRunRef.current += 1;
-    api.cancelActive?.();
-    audioRef.current?.pause();
-    audioRef.current = null;
-    controller.interrupt();
-    api.saveChat(controller.getSnapshot().messages);
-    continuousTimerRef.current = setTimeout(() => {
-      if (sessionActiveRef.current && !pausedRef.current) beginListening();
-    }, 0);
-  };
-
-  const endSession = () => {
-    clearDemoTimers();
-    clearTimeout(continuousTimerRef.current);
-    conversationRunRef.current += 1;
-    listeningRunRef.current += 1;
-    sessionActiveRef.current = false;
-    pausedRef.current = false;
-    api.cancelActive?.();
-    audioRef.current?.pause();
-    audioRef.current = null;
-    scribeRef.current?.stop();
-    scribeRef.current = null;
-    controller.endSession();
-    setPaused(false);
-    setActiveSession(false);
-  };
-
   useEffect(() => api.onAudioStop?.(() => {
-    clearDemoTimers();
-    clearTimeout(continuousTimerRef.current);
-    conversationRunRef.current += 1;
-    listeningRunRef.current += 1;
-    pausedRef.current = false;
-    setPaused(false);
-    api.cancelActive?.();
-    audioRef.current?.pause();
-    audioRef.current = null;
-    scribeRef.current?.stop();
-    scribeRef.current = null;
-    if (controller.getSnapshot().state === "speaking") {
-      controller.interrupt();
-      api.saveChat(controller.getSnapshot().messages);
+    if (conversationSurface === "voice") {
+      conversation.resumeVoice?.();
     }
-    if (conversationSurface === "voice") conversation.resumeVoice?.();
-  }), [api, controller, conversation, conversationSurface]);
+  }), [api, conversation, conversationSurface]);
 
   const savePreferences = async () => {
     if (savingSettings) return;
@@ -576,7 +360,7 @@ export function App({ runtimeApi = api, conversationAdapter, ScribeClient = Real
             <img src={meta.src} alt={`8-bit 罗照月，${meta.label}`} draggable="false" />
             <span className="avatar-halo" />
             {visualState === "idle" && <SleepIndicator />}
-            {!activeSession && <span className="wake-hint">唤醒照月</span>}
+            {conversationSurface === "none" && <span className="wake-hint">唤醒照月</span>}
           </button>
         )}
 

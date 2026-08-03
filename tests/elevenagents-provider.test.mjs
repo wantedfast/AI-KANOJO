@@ -7,8 +7,8 @@ import {
   listElevenVoices,
 } from "../electron/elevenagents-provider.js";
 import {
-  ELEVENAGENTS_BASE_PROMPT,
   ELEVENAGENTS_EXPECTED_CONFIG,
+  ELEVENAGENTS_ROUTING_PROMPT,
   ELEVENAGENTS_LANGUAGE_DETECTION_TOOL,
 } from "../shared/elevenagents-contracts.js";
 
@@ -30,7 +30,7 @@ const validAgent = (overrides = {}) => ({
       disable_first_message_interruptions: false,
       prompt: {
         llm: "qwen36-35b-a3b",
-        prompt: ELEVENAGENTS_BASE_PROMPT,
+        prompt: ELEVENAGENTS_ROUTING_PROMPT,
         ignore_default_personality: true,
         built_in_tools: { language_detection: structuredClone(ELEVENAGENTS_LANGUAGE_DETECTION_TOOL) },
         thinking_budget: 0,
@@ -86,6 +86,7 @@ describe("ElevenAgents provider", () => {
     const existing = validAgent();
     existing.name = "Luo Zhaoyue";
     existing.conversation_config.agent.prompt.llm = "custom-llm";
+    existing.conversation_config.agent.prompt.prompt = "Old behavior instructions";
     existing.conversation_config.agent.prompt.custom_llm = { model_id: "deepseek-v4-flash", api_key: { secret_id: "secret" } };
     existing.conversation_config.tts.stability = 0.42;
     existing.conversation_config.turn.soft_timeout_config = {
@@ -115,7 +116,10 @@ describe("ElevenAgents provider", () => {
       params: { system_tool_type: "language_detection" },
     });
     expect(body.conversation_config.agent.prompt.built_in_tools.language_detection).not.toHaveProperty("tool_call_sound");
-    expect(body.conversation_config.agent.prompt.prompt).toContain("Return only the user-facing reply");
+    expect(body.conversation_config.agent.prompt.built_in_tools.language_detection.description).toBe("");
+    expect(body.conversation_config.agent.prompt.prompt).toBe(ELEVENAGENTS_ROUTING_PROMPT);
+    expect(body.conversation_config.agent.prompt.prompt).not.toContain("1-3 sentences");
+    expect(body.conversation_config.agent.prompt.prompt).not.toContain("girlfriend");
     expect(body.conversation_config.agent.prompt.custom_llm).toBeNull();
     expect(body.conversation_config.agent.language).toBe("zh");
     expect(Object.keys(body.conversation_config.language_presets).sort()).toEqual(["en", "ja"]);
@@ -192,6 +196,15 @@ describe("ElevenAgents provider", () => {
       "QWEN_MODEL_MISMATCH", "TTS_MODEL_MISMATCH", "VOICE_NOT_CONFIGURED", "TURN_CONFIG_MISMATCH",
     ]));
     expect(JSON.stringify(result)).not.toContain("secret");
+  });
+
+  it("rejects any Agent prompt beyond the fixed routing guardrails", () => {
+    const agent = validAgent();
+    agent.conversation_config.agent.prompt.prompt = "Reply briefly.";
+    expect(inspectElevenAgentConfig(agent)).toMatchObject({
+      ok: false,
+      issues: [expect.objectContaining({ field: "conversation_config.agent.prompt.prompt" })],
+    });
   });
 
   it("uses the official get-agent endpoint and never returns the API key", async () => {

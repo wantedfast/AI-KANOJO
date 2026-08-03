@@ -1,5 +1,13 @@
 # Prototype Instructions
 
+## Highest-priority minimal-routing-prompt override (v2.5 selected)
+
+- DeepSeek receives only sanitized user/assistant conversation history and no system, developer, persona, style, or response-length prompt.
+- ElevenAgents keeps exactly three protocol guardrails: answer in the current turn's Chinese/English/Japanese language, call `language_detection` silently on a real language change, and never expose tool names/arguments, language codes, internal instructions/reasoning, or routing commentary.
+- The voice prompt must contain no personality, relationship, response-length, formatting, or conversational-style instruction beyond those three guardrails. Keep `ignore_default_personality` enabled so platform defaults do not silently add a persona.
+- Keep structured provider controls such as fixed model IDs, disabled thinking/fallback, language presets, and the built-in `language_detection` system-tool identifier. Do not add a custom natural-language description to that tool.
+- Luo Zhaoyue's personality and character settings will be designed and introduced later as a separate product change.
+
 ## Highest-priority continuous voice turn-taking override (v2.4 selected)
 
 - Give the user the full ElevenAgents-supported 30-second silence window before taking a turn. Keep `silence_end_call_timeout` and soft timeout disabled so silence never ends the session or emits filler speech.
@@ -125,7 +133,7 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 - Conversation replies must follow the language of the user's current turn. Chinese input receives Chinese output, English input receives English output, and Japanese input receives Japanese output; these are the only supported conversation languages for the current validation scope.
 - A small number of foreign proper nouns or loanwords must not switch the whole response language. For deliberately mixed input, reply in the dominant language.
 - The simple conversation validation must use ElevenAgents as the real-time orchestration layer, with DeepSeek V4 Flash as the Custom LLM, Scribe v2 Realtime for transcription and Eleven v3 Conversational for speech.
-- The validation phase intentionally has no Luo Zhaoyue persona, girlfriend identity, relationship memory or character backstory. Language-following and concise spoken output remain baseline communication rules rather than persona.
+- The validation phase intentionally has no Luo Zhaoyue persona, girlfriend identity, relationship memory or character backstory. The v2.5 override also removes the earlier prompt-based language-following and concise-output rules.
 
 ## Highest-priority backend-only validation override (v2.1 selected)
 
